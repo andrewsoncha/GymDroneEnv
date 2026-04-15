@@ -16,6 +16,7 @@ def drawRandomCircles(imageShape, circleN, maxRadius):
 class Map:
     def __init__(self, imgPath=''):
         self.img = drawRandomCircles((50, 50), 10, 10)
+        self.visit = np.zeros_like(self.img)
         # cv2.imshow('loaded map', self.img)
         # cv2.waitKey(100)
         self.rowN = self.img.shape[0]
@@ -32,7 +33,13 @@ class Map:
         if self.isOutOfBounds(posX, posY):
             return None
         else:
-            return self.img[posX, posY]
+            return -255 if self.visit[posX][posY]==255 else self.img[posX, posY]
+
+    def visitPos(self, posX, posY):
+        if self.isOutOfBounds(posX, posY):
+            return None
+        else:
+            self.visit[posX][posY] = 255
 
     def getLocalView(self, posX, posY, visionRange = 5):
         if self.isOutOfBounds(posX, posY):
@@ -72,7 +79,6 @@ class Env(gym.Env):
         self.map = Map(self.map_path)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
-        self.visitSet = set()
 
         observation = self._get_obs()
         info = self._get_info()
@@ -83,7 +89,6 @@ class Env(gym.Env):
         self.map = Map(map_path)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
-        self.visitSet = set()
         self.action_space = gym.spaces.Discrete(5)
         self.observation_space = gym.spaces.Box(0, 255, (self.VISION_RANGE, self.VISION_RANGE), np.uint8)
         self._action_to_direction = {
@@ -97,10 +102,7 @@ class Env(gym.Env):
 
     def getReward(self, dronePosX, dronePosY, action):
         reward = 0
-        if (dronePosX, dronePosY) in self.visitSet:
-            reward += self.VISIT_PENALTY
-        else:
-            reward += self.map.getImgValue(dronePosX, dronePosY).mean()
+        reward += self.map.getImgValue(dronePosX, dronePosY).mean()
         if action == 5: 
             reward += self.HOVER_PENALTY
         return reward
@@ -121,7 +123,8 @@ class Env(gym.Env):
         if permanent:
             self.dronePosX = dronePosX
             self.dronePosY = dronePosY
-            self.visitSet.add((self.dronePosX, self.dronePosY))
+            self.map.visitPos(dronePosX, dronePosY)
+
         return observation, float(reward), done, truncated, info
 
 
