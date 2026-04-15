@@ -15,10 +15,10 @@ def drawRandomCircles(imageShape, circleN, maxRadius):
 
 class Map:
     def __init__(self, imgPath=''):
-        self.img = drawRandomCircles((50, 50), 10, 10)
+        self.img = drawRandomCircles((50, 50), 5, 10)
         self.visit = np.zeros_like(self.img)
         # cv2.imshow('loaded map', self.img)
-        # cv2.waitKey(100)
+        # cv2.waitKey(1)
         self.rowN = self.img.shape[0]
         self.colN = self.img.shape[1]
 
@@ -33,7 +33,7 @@ class Map:
         if self.isOutOfBounds(posX, posY):
             return None
         else:
-            return -255 if self.visit[posX][posY]==255 else self.img[posX, posY]
+            return -10 if self.visit[posX][posY]==255 else self.img[posX, posY]
 
     def visitPos(self, posX, posY):
         if self.isOutOfBounds(posX, posY):
@@ -84,8 +84,9 @@ class Env(gym.Env):
         info = self._get_info()
         return observation, info
 
-    def __init__(self, map_path):
+    def __init__(self, map_path, render_mode=""):
         self.map_path = map_path
+        self.render_mode = render_mode
         self.map = Map(map_path)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
@@ -124,8 +125,20 @@ class Env(gym.Env):
             self.dronePosX = dronePosX
             self.dronePosY = dronePosY
             self.map.visitPos(dronePosX, dronePosY)
+            if self.render_mode == 'rgb_array':
+                self.render()
 
         return observation, float(reward), done, truncated, info
+
+    def render(self):
+        colorImage = cv2.merge([self.map.img, self.map.img, self.map.img])
+        zeros = np.zeros_like(self.map.visit)
+        redPath = cv2.merge([zeros, zeros, self.map.visit])
+        cv2.imshow('redPath', redPath)
+        colorImage = colorImage + redPath
+        colorImage = cv2.resize(colorImage, (200, 200))
+        cv2.imshow('frame', colorImage)
+        cv2.waitKey(100)
 
 
 if __name__ == '__main__':
