@@ -141,12 +141,14 @@ class Env(gym.Env):
         colorImage = cv2.merge([self.map.img, self.map.img, self.map.img])
         zeros = np.zeros_like(self.map.visit)
         redPath = cv2.merge([zeros, zeros, self.map.visit])
-        # cv2.imshow('redPath', redPath)
-        colorImage = colorImage + redPath
-        colorImage = cv2.resize(colorImage, (200, 200))
-        # cv2.imshow('frame', colorImage)
-        # cv2.waitKey(100)
-        return colorImage
+        _, mask = cv2.threshold(self.map.visit, 1, 255, cv2.THRESH_BINARY)
+        mask = mask/255
+        maskColor = cv2.merge([mask, mask, mask])
+        frame = colorImage
+        for c in range(3):
+            frame[:,:,c] = colorImage[:,:,c]*(1-mask) + redPath[:,:,c]*mask
+        resizedFrame = cv2.resize(frame, (200, 200))
+        return resizedFrame
 
 
 if __name__ == '__main__':
