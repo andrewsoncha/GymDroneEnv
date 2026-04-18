@@ -14,18 +14,20 @@ def drawRandomCircles(imageShape, circleN, maxRadius):
     return image
 
 class Map:
-    def __init__(self, imgPath=''):
+    def __init__(self, visionRange = 5, imgPath=''):
         self.img = drawRandomCircles((50, 50), 5, 10)
         self.visit = np.zeros_like(self.img)
+        self.imgBiggerSize = np.zeros_like
         # cv2.imshow('loaded map', self.img)
         # cv2.waitKey(1)
         self.rowN = self.img.shape[0]
         self.colN = self.img.shape[1]
+        self.visionRange = visionRange
 
     def isOutOfBounds(self, posX, posY):
-        if posX < 0 or posX > self.colN:
+        if posX < self.visionRange or posX > self.colN-self.visionRange:
             return True
-        if posY < 0 or posY > self.rowN:
+        if posY < self.visionRange or posY > self.rowN-self.visionRange:
             return True
         return False
 
@@ -41,11 +43,11 @@ class Map:
         else:
             self.visit[posX][posY] = 255
 
-    def getLocalView(self, posX, posY, visionRange = 5):
+    def getLocalView(self, posX, posY):
         if self.isOutOfBounds(posX, posY):
             return None
         else:
-            return self.img[posX-visionRange//2:posX+visionRange//2+1, posY-visionRange//2:posY+visionRange//2+1]
+            return self.img[posX-self.visionRange//2:posX+self.visionRange//2+1, posY-self.visionRange//2:posY+self.visionRange//2+1] - 2*self.visit[posX-self.visionRange//2:posX+self.visionRange//2+1, posY-self.visionRange//2:posY+self.visionRange//2+1]
 
 class Actions(Enum):
     UP = 0
@@ -58,15 +60,19 @@ class Env(gym.Env):
     VISIT_PENALTY = -999
     HOVER_PENALTY = -1
     OUT_OF_BOUNDS_PENALTY = -9999
-    VISION_RANGE = 9
+    VISION_RANGE = 11
 
     def _get_obs(self):
-        local_map = self.map.getLocalView(self.dronePosX, self.dronePosY, self.VISION_RANGE)
+        local_map = self.map.getLocalView(self.dronePosX, self.dronePosY)
         observation = local_map
+        # cv2.imshow('localMap', cv2.resize(cv2.applyColorMap(local_map, cv2.COLORMAP_JET), (300, 300)))
+        # cv2.waitKey(1)
+        # print('observation shape: ', observation.shape)
         return observation
+        # return observation[:, :, np.newaxis] # Used to transform (colN, rowN) array to (colN, rowN, 1) shaped array
 
     def _get_info(self):
-        local_map = self.map.getLocalView(self.dronePosX, self.dronePosY, self.VISION_RANGE)
+        local_map = self.map.getLocalView(self.dronePosX, self.dronePosY)
         imgVal = self.map.getImgValue(self.dronePosX, self.dronePosY)
         return {
                 "DronePos": (self.dronePosX, self.dronePosY),
@@ -76,7 +82,7 @@ class Env(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.map = Map(self.map_path)
+        self.map = Map(visionRange = self.VISION_RANGE, imgPath = self.map_path)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
 
@@ -87,11 +93,11 @@ class Env(gym.Env):
     def __init__(self, map_path, render_mode=""):
         self.map_path = map_path
         self.render_mode = render_mode
-        self.map = Map(map_path)
+        self.map = Map(visionRange = self.VISION_RANGE, imgPath = map_path)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.action_space = gym.spaces.Discrete(5)
-        self.observation_space = gym.spaces.Box(0, 255, (self.VISION_RANGE, self.VISION_RANGE), np.uint8)
+        self.observation_space = gym.spaces.Box(0, 255, (self.VISION_RANGE, self.VISION_RANGE), dtype=np.uint8)
         self._action_to_direction = {
                 np.int64(Actions.UP.value): np.array([0, 1]),
                 np.int64(Actions.DOWN.value): np.array([0, -1]),
@@ -103,7 +109,7 @@ class Env(gym.Env):
 
     def getReward(self, dronePosX, dronePosY, action):
         reward = 0
-        reward += self.map.getImgValue(dronePosX, dronePosY).mean()
+        reward += self.map.getImgValue(dronePosX, dronePosY)
         if action == 5: 
             reward += self.HOVER_PENALTY
         return reward
@@ -116,29 +122,31 @@ class Env(gym.Env):
         
         observation = self._get_obs()
         info = self._get_info()
-        
+
         reward = self.getReward(self.dronePosX, self.dronePosY, action)
-        done = True
+        done = self.map.isOutOfBounds(dronePosX, dronePosY)
         truncated = False
 
-        if permanent:
-            self.dronePosX = dronePosX
-            self.dronePosY = dronePosY
-            self.map.visitPos(dronePosX, dronePosY)
-            if self.render_mode == 'rgb_array':
-                self.render()
+        if not done:
+            if permanent:
+                self.dronePosX = dronePosX
+                self.dronePosY = dronePosY
+                self.map.visitPos(dronePosX, dronePosY)
+                #if self.render_mode == 'rgb_array':
+                #    self.render()
 
         return observation, float(reward), done, truncated, info
 
-    def render(self):
+    def render(self, render_mode='rgb_array'):
         colorImage = cv2.merge([self.map.img, self.map.img, self.map.img])
         zeros = np.zeros_like(self.map.visit)
         redPath = cv2.merge([zeros, zeros, self.map.visit])
-        cv2.imshow('redPath', redPath)
+        # cv2.imshow('redPath', redPath)
         colorImage = colorImage + redPath
         colorImage = cv2.resize(colorImage, (200, 200))
-        cv2.imshow('frame', colorImage)
-        cv2.waitKey(100)
+        # cv2.imshow('frame', colorImage)
+        # cv2.waitKey(100)
+        return colorImage
 
 
 if __name__ == '__main__':
