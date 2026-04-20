@@ -15,9 +15,9 @@ def drawRandomCircles(imageShape, circleN, maxRadius):
 
 class Map:
     def __init__(self, visionRange = 5, imgPath=''):
-        self.img = drawRandomCircles((100, 100), 15, 10)
+        self.img = drawRandomCircles((100, 100), 60, 15)
         maxVal = np.max(self.img)
-        self.img = (cv2.distanceTransform(self.img, cv2.DIST_L2, 0)*24).astype(np.uint8)
+        self.img = (cv2.distanceTransform(self.img, cv2.DIST_L2, 0)*12).astype(np.uint8)
         self.visit = np.zeros_like(self.img)
         self.imgBiggerSize = np.zeros_like
         # cv2.imshow('loaded map', self.img)
@@ -27,9 +27,9 @@ class Map:
         self.visionRange = visionRange
 
     def isOutOfBounds(self, posX, posY):
-        if posX < self.visionRange or posX > self.colN-self.visionRange:
+        if posX < self.visionRange//2 or posX > self.colN-self.visionRange//2:
             return True
-        if posY < self.visionRange or posY > self.rowN-self.visionRange:
+        if posY < self.visionRange//2 or posY > self.rowN-self.visionRange//2:
             return True
         return False
 
@@ -37,7 +37,7 @@ class Map:
         if self.isOutOfBounds(posX, posY):
             return None
         else:
-            return -10 if self.visit[posX][posY]==255 else self.img[posX, posY]
+            return self.img[posX, posY]
 
     def visitPos(self, posX, posY):
         if self.isOutOfBounds(posX, posY):
@@ -67,11 +67,12 @@ class Actions(Enum):
     HOVER = 4
     
 class Env(gym.Env):
-    VISIT_PENALTY = -99
+    VISIT_PENALTY = -4
     HOVER_PENALTY = -99
-    OUT_OF_BOUNDS_PENALTY = -999999
+    OUT_OF_BOUNDS_PENALTY = -100
     VISION_RANGE = 11
-    DEFAULT_REWARD = 100
+    DEFAULT_REWARD = 0
+    EXPLORE_REWARD = 10
 
     def _get_obs(self):
         local_map = self.map.getLocalView(self.dronePosX, self.dronePosY)
@@ -134,10 +135,14 @@ class Env(gym.Env):
     def getReward(self, dronePosX, dronePosY, action):
         reward = self.DEFAULT_REWARD
         if self.map.isOutOfBounds(dronePosX, dronePosY):
-            reward = SELF.OUT_OF_BOUNDS_PENALTY
+            reward += self.OUT_OF_BOUNDS_PENALTY
         else:
-            reward += self.map.getImgValue(dronePosX, dronePosY) * 10 # The times 10 is here to make the reward for finding the mining batches higher
-        if action == 5: 
+            reward += (self.map.getImgValue(dronePosX, dronePosY)).astype(np.int8) * 20 # The times 10 is here to make the reward for finding the mining batches higher
+        if self.map.isVisited(dronePosX, dronePosY):
+            reward += self.VISIT_PENALTY
+        else:
+            reward += self.EXPLORE_REWARD
+        if action == 4: 
             reward += self.HOVER_PENALTY
         return reward
 
@@ -150,19 +155,19 @@ class Env(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
 
-        reward = self.getReward(self.dronePosX, self.dronePosY, action)
+        reward = self.getReward(dronePosX, dronePosY, action)
 
         # If staying in an already visited place for the past 10 steps, end the game.
         if self.map.isVisited(self.dronePosX, self.dronePosY):
             self.visitCnt += 1
+        else:
+            self.visitCnt = 0
 
-        if self.visitCnt > 7:
+        if self.visitCnt > 20:
             done = True
         else:
             done = False
         outOfBounds = self.map.isOutOfBounds(dronePosX, dronePosY)
-        if outOfBounds:
-            done = True
         truncated = False
 
         if not done:
