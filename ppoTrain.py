@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 
 import cv2
 
-TRAIN_TIMESTEPS = 500000
+TRAIN_TIMESTEPS = 50000
 if __name__ == '__main__':
     log_dir = 'log/'
     os.makedirs(log_dir, exist_ok=True)
@@ -33,18 +33,25 @@ if __name__ == '__main__':
 
     # vec_env = model.get_env()
     obs, info = env.reset()
+
+    rewardSum = 0
     
     for i in range(1000):
         action, _state = model.predict(obs, deterministic=True)
         #print('action:',action)
         obs, reward, done, Truncated, info = env.step(int(action))
+        rewardSum += reward
 
         # print('done:', done)
 
         if done:
+            print('done! rewardSum: ', rewardSum)
+            rewardSum = 0
             env.reset()
-        cv2.imshow('frame', env.render())
-        cv2.waitKey(100)
+        img = env.render()
+        cv2.imshow('frame', img)
+        # cv2.imwrite(f'frame_{i:03}.jpg', img)
+        cv2.waitKey(10)
         
 
     # env.render_mode = "rgb_array"
