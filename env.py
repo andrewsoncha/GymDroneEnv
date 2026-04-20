@@ -15,8 +15,9 @@ def drawRandomCircles(imageShape, circleN, maxRadius):
 
 class Map:
     def __init__(self, visionRange = 5, imgPath=''):
-        self.img = drawRandomCircles((50, 50), 10, 10)
-        self.img = (cv2.distanceTransform(self.img, cv2.DIST_L2, 0)*200).astype(np.uint8)
+        self.img = drawRandomCircles((100, 100), 15, 10)
+        maxVal = np.max(self.img)
+        self.img = (cv2.distanceTransform(self.img, cv2.DIST_L2, 0)*24).astype(np.uint8)
         self.visit = np.zeros_like(self.img)
         self.imgBiggerSize = np.zeros_like
         # cv2.imshow('loaded map', self.img)
@@ -70,16 +71,15 @@ class Env(gym.Env):
     HOVER_PENALTY = -99
     OUT_OF_BOUNDS_PENALTY = -999999
     VISION_RANGE = 11
-    DEFAULT_REWARD = 50
+    DEFAULT_REWARD = 100
 
     def _get_obs(self):
         local_map = self.map.getLocalView(self.dronePosX, self.dronePosY)
-        observation = local_map
-        # cv2.imshow('localMap', cv2.resize(cv2.applyColorMap(local_map, cv2.COLORMAP_JET), (300, 300)))
-        # cv2.waitKey(1)
-        # print('observation shape: ', observation.shape)
+        observation = {
+                'local_map': local_map,
+                'drone_pos': np.array([self.dronePosX, self.dronePosY], dtype=np.uint8)
+        }
         return observation
-        # return observation[:, :, np.newaxis] # Used to transform (colN, rowN) array to (colN, rowN, 1) shaped array
 
     def _get_info(self):
         local_map = self.map.getLocalView(self.dronePosX, self.dronePosY)
@@ -108,7 +108,12 @@ class Env(gym.Env):
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.action_space = gym.spaces.Discrete(5)
-        self.observation_space = gym.spaces.Box(0, 255, (self.VISION_RANGE, self.VISION_RANGE), dtype=np.uint8)
+        self.observation_space = gym.spaces.Dict(
+                {
+                    "local_map": gym.spaces.Box(low=0, high=255, shape=(self.VISION_RANGE, self.VISION_RANGE), dtype=np.uint8),
+                    "drone_pos": gym.spaces.Box(low=0, high=self.map.rowN, shape=(2, ), dtype=np.uint8)
+                }
+        )
         self._action_to_direction = {
                 np.int64(Actions.UP.value): np.array([0, 1]),
                 np.int64(Actions.DOWN.value): np.array([0, -1]),

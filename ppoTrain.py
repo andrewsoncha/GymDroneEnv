@@ -26,8 +26,8 @@ if __name__ == '__main__':
     check_env(env)
     env = Monitor(env, log_dir)
 
-    model = PPO(ActorCriticPolicy, env, verbose=1)
-    #model = RecurrentPPO('MlpLstmPolicy', env, verbose=1)
+    # model = PPO('MultiInputPolicy', env, verbose=1)
+    model = RecurrentPPO('MultiInputLstmPolicy', env, verbose=1)
     model.learn(total_timesteps=TRAIN_TIMESTEPS)
     # model.save('drone_search')
 
