@@ -47,10 +47,7 @@ class Map:
             return self.img[posX, posY]
 
     def visitPos(self, posX, posY):
-        if self.isOutOfBounds(posX, posY):
-            return None
-        else:
-            self.visit[posX-self.visionRange//2:posX+self.visionRange//2+1, posY-self.visionRange//2:posY+self.visionRange//2+1] = 255
+        self.visit[posX-self.visionRange//2:posX+self.visionRange//2+1, posY-self.visionRange//2:posY+self.visionRange//2+1] = 255
 
     # The method is named kinda wrong. Returns if there is any cell that has not been seen before visible currently -- Andrew Chang Apr. 22 2026
     def isVisited(self, posX, posY):
@@ -65,27 +62,23 @@ class Map:
 
     def getLocalView(self, posX, posY):
         if self.isOutOfBounds(posX, posY):
-            return None
+            mapView = [[0]*self.visionRange]*self.visionRange
+            visitView = [[0]*self.visionRange]*self.visionRange
         else:
             mapView = self.img[posX-self.visionRange//2:posX+self.visionRange//2+1, posY-self.visionRange//2:posY+self.visionRange//2+1] 
             visitView = self.visit[posX-self.visionRange//2:posX+self.visionRange//2+1, posY-self.visionRange//2:posY+self.visionRange//2+1]
-            return mapView, visitView
+        return mapView, visitView
 
     def getTargetInView(self, dronePosX, dronePosY):
         if self.isOutOfBounds(dronePosX, dronePosY):
             return 0, 0, 0, self.visionRange**2
 
         local_map, local_visit = self.getLocalView(dronePosX, dronePosY)
-        visit_uniques, visit_counts = np.unique(local_visit, return_counts=True)
-        visit_countDict = dict(zip(visit_uniques, visit_counts))
-
-        new_cells_seen_cnt = 0
-        if 0 in visit_countDict:
-            new_cells_seen_cnt = visit_countDict[0]
 
         # Part of the localview map that is not seen previously
         newlySeenCoor = [(i, j) for i in range(len(local_visit)) for j in range(len(local_visit[i])) if local_visit[i][j]==0]
-        new_map_view = local_map[newlySeenCoor]
+        new_cells_seen_cnt = len(newlySeenCoor)
+        new_map_view = [local_map[x, y] for (x, y) in newlySeenCoor]
         new_map_uniques, new_map_counts = np.unique(new_map_view, return_counts=True)
         new_map_countDict = dict(zip(new_map_uniques, new_map_counts))
 
@@ -102,7 +95,6 @@ class Map:
         visit_size = len(self.visit) * len(self.visit[0])
         visit_uniques, visit_counts = np.unique(self.visit, return_counts=True)
         visit_countDict = dict(zip(visit_uniques, visit_counts))
-
         
         seen_cnt = 0
         # Put like this to avoid KeyError when there is no 255 in visit_countDict
@@ -121,13 +113,13 @@ class Actions(Enum):
 
 class Env(gym.Env):
     VISION_RANGE = 11
-    BOUNDS_MARGIN = 5
+    BOUNDS_MARGIN = 50
 
-    DEFAULT_PENALTY = 0.01
+    DEFAULT_PENALTY = -0.01
     NEW_NONTARGET_REWARD = 0.05
     NEW_TARGET_REWARD = 1.0
-    ALREADY_SEEN_PENALTY = -0.02
-    CLOSE_TO_BOUNDS_PENALTY = -0.1
+    ALREADY_SEEN_PENALTY = -0.005
+    CLOSE_TO_BOUNDS_PENALTY = -0.05
     END_COVERAGE_THRESH = 0.85
     COVERAGE_END_REWARD = 5.0
     OUT_OF_BOUNDS_PENALTY = -2.0
@@ -160,6 +152,7 @@ class Env(gym.Env):
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.stayStillCnt = 0
+        self.map.visitPos(self.dronePosX, self.dronePosY)
 
         observation = self._get_obs()
         info = self._get_info()
@@ -176,7 +169,7 @@ class Env(gym.Env):
                 {
                     "local_map": gym.spaces.Box(low=0, high=255, shape=(self.VISION_RANGE, self.VISION_RANGE), dtype=np.uint8),
                     "local_visit": gym.spaces.Box(low=0, high=255, shape=(self.VISION_RANGE, self.VISION_RANGE), dtype=np.uint8),
-                    "drone_pos": gym.spaces.Box(low=0, high=self.map.rowN, shape=(2, ), dtype=np.float64)
+                    "drone_pos": gym.spaces.Box(low=0, high=1, shape=(2, ), dtype=np.float64)
                     }
                 )
         self._action_to_direction = {
@@ -220,16 +213,23 @@ class Env(gym.Env):
         dronePosX = self.dronePosX + direction[0]
         dronePosY = self.dronePosY + direction[1]
 
-        observation = self._get_obs()
-        info = self._get_info()
-
-        reward = self.getReward(dronePosX, dronePosY, action)
-
         # If staying in an already visited place for the past 20 steps, end the game.
         if dronePosX == self.dronePosX and dronePosY == self.dronePosY:
             self.stayStillCnt += 1
         else:
             self.stayStillCnt = 0
+
+        
+        outOfBounds = self.map.isOutOfBounds(dronePosX, dronePosY)
+        if not outOfBounds:
+            self.dronePosX = dronePosX
+            self.dronePosY = dronePosY
+
+        observation = self._get_obs()
+        info = self._get_info()
+
+        reward = self.getReward(dronePosX, dronePosY, action)
+
 
         done = False
         # if self.stayStillCnt > 20:
@@ -237,18 +237,12 @@ class Env(gym.Env):
         if self.map.getCoverage() > self.END_COVERAGE_THRESH:
             done = True
 
-        outOfBounds = self.map.isOutOfBounds(dronePosX, dronePosY)
         if outOfBounds:
             done = True
-        truncated = False
+        else:
+            self.map.visitPos(self.dronePosX, self.dronePosY)
 
-        if not done:
-            if not outOfBounds:
-                self.dronePosX = dronePosX
-                self.dronePosY = dronePosY
-                self.map.visitPos(dronePosX, dronePosY)
-                #if self.render_mode == 'rgb_array':
-                #    self.render()
+        truncated = False
 
         return observation, float(reward), done, truncated, info
 
