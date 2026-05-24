@@ -15,7 +15,7 @@ def drawRandomCircles(imageShape, circleN, maxRadius):
 
 class Map:
     def __init__(self, visionRange = 5, imgPath=''):
-        self.img = drawRandomCircles((500, 500), 60, 35)
+        self.img = drawRandomCircles((300, 300), 60, 35)
         maxVal = np.max(self.img)
         # self.img = (cv2.distanceTransform(self.img, cv2.DIST_L2, 0)*12).astype(np.uint8)
         self.visit = np.zeros_like(self.img)
@@ -116,16 +116,17 @@ class Env(gym.Env):
     BOUNDS_MARGIN = 50
 
     DEFAULT_PENALTY = -0.01
-    NEW_NONTARGET_REWARD = 0.05
+    NEW_NONTARGET_REWARD = 0.005
     NEW_TARGET_REWARD = 1.0
     ALREADY_SEEN_PENALTY = -0.005
-    CLOSE_TO_BOUNDS_PENALTY = -0.05
+    CLOSE_TO_BOUNDS_PENALTY = -5.0
     END_COVERAGE_THRESH = 0.85
     COVERAGE_END_REWARD = 5.0
-    OUT_OF_BOUNDS_PENALTY = -2.0
+    OUT_OF_BOUNDS_PENALTY = -10.0
     VISIT_PENALTY = -0.02
     HOVER_PENALTY = -0.1
     STAY_STILL_PENALTY = -0.1
+    COVERAGE_DELTA_REWARD = 2.0
 
     def _get_obs(self):
         local_map, local_visit = self.map.getLocalView(self.dronePosX, self.dronePosY)
@@ -148,11 +149,12 @@ class Env(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.map = Map(visionRange = self.VISION_RANGE, imgPath = self.map_path)
+        # self.map = Map(visionRange = self.VISION_RANGE, imgPath = self.map_path)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.stayStillCnt = 0
-        self.map.visitPos(self.dronePosX, self.dronePosY)
+        self.map.visit = np.zeros_like(self.map.img)
+        #self.map.visitPos(self.dronePosX, self.dronePosY)
 
         observation = self._get_obs()
         info = self._get_info()
@@ -192,12 +194,12 @@ class Env(gym.Env):
 
         reward += self.ALREADY_SEEN_PENALTY * old_cells_cnt
 
-        if action == 4: 
-            reward += self.HOVER_PENALTY
+        #if action == 4: 
+        #    reward += self.HOVER_PENALTY
         if self.stayStillCnt > 2:
             reward += self.STAY_STILL_PENALTY * (self.stayStillCnt - 2)
 
-        reward += self.CLOSE_TO_BOUNDS_PENALTY * max(0, self.BOUNDS_MARGIN - self.map.getDistToBounds(dronePosX, dronePosY))
+        reward += self.CLOSE_TO_BOUNDS_PENALTY * max(0, (self.BOUNDS_MARGIN - self.map.getDistToBounds(dronePosX, dronePosY))/self.BOUNDS_MARGIN) ** 2
 
         if self.map.isOutOfBounds(dronePosX, dronePosY):
             reward += self.OUT_OF_BOUNDS_PENALTY
@@ -225,11 +227,7 @@ class Env(gym.Env):
             self.dronePosX = dronePosX
             self.dronePosY = dronePosY
 
-        observation = self._get_obs()
-        info = self._get_info()
-
         reward = self.getReward(dronePosX, dronePosY, action)
-
 
         done = False
         # if self.stayStillCnt > 20:
@@ -240,7 +238,14 @@ class Env(gym.Env):
         if outOfBounds:
             done = True
         else:
+            # prev_coverage and new_coverage done from claude suggestion to incentivize more exploration by the RL agent
+            prev_coverage = self.map.getCoverage()
             self.map.visitPos(self.dronePosX, self.dronePosY)
+            new_coverage = self.map.getCoverage()
+            reward += self.COVERAGE_DELTA_REWARD * (new_coverage - prev_coverage)
+
+        observation = self._get_obs()
+        info = self._get_info()
 
         truncated = False
 
