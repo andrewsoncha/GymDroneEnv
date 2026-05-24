@@ -17,12 +17,12 @@ import matplotlib.pyplot as plt
 
 import cv2
 
-TRAIN_TIMESTEPS = 50000
+TRAIN_TIMESTEPS = 5000
 if __name__ == '__main__':
     log_dir = 'log/'
     os.makedirs(log_dir, exist_ok=True)
 
-    env = Env('map.png', render_mode = 'rgb_array')
+    env = Env('map.png', render_mode = 'rgb_array', map_seed=42)
     check_env(env)
     env = Monitor(env, log_dir)
 
@@ -41,6 +41,7 @@ if __name__ == '__main__':
         #print('action:',action)
         obs, reward, done, Truncated, info = env.step(int(action))
         rewardSum += reward
+        print('reward: ', reward)
 
         # print('done:', done)
 

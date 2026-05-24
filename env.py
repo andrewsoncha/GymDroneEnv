@@ -3,8 +3,9 @@ import cv2
 import numpy as np
 import gymnasium as gym
 from random import randint
+import random
 
-def drawRandomCircles(imageShape, circleN, maxRadius):
+def drawRandomCircles(imageShape, circleN, maxRadius, seed=42):
     image = np.zeros(imageShape, dtype=np.uint8)
     width, height = imageShape
     for i in range(circleN):
@@ -14,8 +15,9 @@ def drawRandomCircles(imageShape, circleN, maxRadius):
     return image
 
 class Map:
-    def __init__(self, visionRange = 5, imgPath=''):
-        self.img = drawRandomCircles((300, 300), 60, 35)
+    def __init__(self, visionRange = 5, imgPath='', seed=42):
+        random.seed(seed)
+        self.img = drawRandomCircles((300, 300), 60, 35, seed)
         maxVal = np.max(self.img)
         # self.img = (cv2.distanceTransform(self.img, cv2.DIST_L2, 0)*12).astype(np.uint8)
         self.visit = np.zeros_like(self.img)
@@ -149,21 +151,22 @@ class Env(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        # self.map = Map(visionRange = self.VISION_RANGE, imgPath = self.map_path)
+        self.map = Map(visionRange = self.VISION_RANGE, imgPath = self.map_path, seed=self.map_seed)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.stayStillCnt = 0
-        self.map.visit = np.zeros_like(self.map.img)
+        # self.map.visit = np.zeros_like(self.map.img)
         #self.map.visitPos(self.dronePosX, self.dronePosY)
 
         observation = self._get_obs()
         info = self._get_info()
         return observation, info
 
-    def __init__(self, map_path, render_mode=""):
+    def __init__(self, map_path, render_mode="", map_seed = 42):
+        self.map_seed = map_seed
         self.map_path = map_path
         self.render_mode = render_mode
-        self.map = Map(visionRange = self.VISION_RANGE, imgPath = map_path)
+        self.map = Map(visionRange = self.VISION_RANGE, imgPath = map_path, seed=map_seed)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.action_space = gym.spaces.Discrete(5)
