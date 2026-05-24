@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 
 import cv2
 
-TRAIN_TIMESTEPS = 5000
+TRAIN_TIMESTEPS = 2_000_000
 if __name__ == '__main__':
     log_dir = 'log/'
     os.makedirs(log_dir, exist_ok=True)
@@ -27,7 +27,7 @@ if __name__ == '__main__':
     env = Monitor(env, log_dir)
 
     # model = PPO('MultiInputPolicy', env, verbose=1)
-    model = RecurrentPPO('MultiInputLstmPolicy', env, verbose=1)
+    model = RecurrentPPO('MultiInputLstmPolicy', env, verbose=1, n_steps = 1024)
     model.learn(total_timesteps=TRAIN_TIMESTEPS)
     # model.save('drone_search')
 
