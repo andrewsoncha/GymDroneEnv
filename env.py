@@ -5,7 +5,7 @@ import gymnasium as gym
 from random import randint
 import random
 
-def drawRandomCircles(imageShape, circleN, maxRadius, seed=42):
+def drawRandomCircles(imageShape, circleN, maxRadius):
     image = np.zeros(imageShape, dtype=np.uint8)
     width, height = imageShape
     for i in range(circleN):
@@ -15,9 +15,11 @@ def drawRandomCircles(imageShape, circleN, maxRadius, seed=42):
     return image
 
 class Map:
-    def __init__(self, visionRange = 5, imgPath='', seed=42):
-        random.seed(seed)
-        self.img = drawRandomCircles((300, 300), 60, 35, seed)
+    def __init__(self, visionRange = 5, imgPath='', seed=None):
+        if seed is not None:
+            random.seed(seed)
+
+        self.img = drawRandomCircles((300, 300), 60, 35)
         maxVal = np.max(self.img)
         # self.img = (cv2.distanceTransform(self.img, cv2.DIST_L2, 0)*12).astype(np.uint8)
         self.visit = np.zeros_like(self.img)
@@ -133,10 +135,11 @@ class Env(gym.Env):
     def _get_obs(self):
         local_map, local_visit = self.map.getLocalView(self.dronePosX, self.dronePosY)
         observation = {
-                'local_map': local_map,
-                'local_visit': local_visit,
+                'local_map': local_map/255.0,
+                'local_visit': local_visit/255.0,
                 'drone_pos': np.array([self.dronePosX/self.map.colN, self.dronePosY/self.map.rowN])
                 }
+        print(observation)
         return observation
 
     def _get_info(self):
@@ -162,7 +165,7 @@ class Env(gym.Env):
         info = self._get_info()
         return observation, info
 
-    def __init__(self, map_path, render_mode="", map_seed = 42):
+    def __init__(self, map_path, render_mode="", map_seed = None):
         self.map_seed = map_seed
         self.map_path = map_path
         self.render_mode = render_mode
@@ -172,8 +175,8 @@ class Env(gym.Env):
         self.action_space = gym.spaces.Discrete(5)
         self.observation_space = gym.spaces.Dict(
                 {
-                    "local_map": gym.spaces.Box(low=0, high=255, shape=(self.VISION_RANGE, self.VISION_RANGE), dtype=np.uint8),
-                    "local_visit": gym.spaces.Box(low=0, high=255, shape=(self.VISION_RANGE, self.VISION_RANGE), dtype=np.uint8),
+                    "local_map": gym.spaces.Box(low=0, high=1.0, shape=(self.VISION_RANGE, self.VISION_RANGE), dtype=np.float64),
+                    "local_visit": gym.spaces.Box(low=0, high=1.0, shape=(self.VISION_RANGE, self.VISION_RANGE), dtype=np.float64),
                     "drone_pos": gym.spaces.Box(low=0, high=1, shape=(2, ), dtype=np.float64)
                     }
                 )
@@ -217,9 +220,12 @@ class Env(gym.Env):
 
         dronePosX = self.dronePosX + direction[0]
         dronePosY = self.dronePosY + direction[1]
+        print('direction: ', direction)
 
         # If staying in an already visited place for the past 20 steps, end the game.
         if dronePosX == self.dronePosX and dronePosY == self.dronePosY:
+            print('staying still!')
+            print('staying still count: ', self.stayStillCnt)
             self.stayStillCnt += 1
         else:
             self.stayStillCnt = 0
@@ -233,8 +239,8 @@ class Env(gym.Env):
         reward = self.getReward(dronePosX, dronePosY, action)
 
         done = False
-        # if self.stayStillCnt > 20:
-        #    done = True
+        if self.stayStillCnt > 20:
+            done = True
         if self.map.getCoverage() > self.END_COVERAGE_THRESH:
             done = True
 
