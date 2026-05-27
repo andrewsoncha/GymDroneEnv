@@ -51,7 +51,10 @@ class Map:
             return self.img[posX, posY]
 
     def visitPos(self, posX, posY):
-        self.visit[posX-self.visionRange//2:posX+self.visionRange//2+1, posY-self.visionRange//2:posY+self.visionRange//2+1] = 255
+        for x in range(posX-self.visionRange//2, posX+self.visionRange//2+1):
+            for y in range(posY-self.visionRange//2, posY+self.visionRange//2+1):
+                if self.visit[x][y] < 255:
+                    self.visit[x][y] += 1
 
     # The method is named kinda wrong. Returns if there is any cell that has not been seen before visible currently -- Andrew Chang Apr. 22 2026
     def isVisited(self, posX, posY):
@@ -139,7 +142,6 @@ class Env(gym.Env):
                 'local_visit': local_visit/255.0,
                 'drone_pos': np.array([self.dronePosX/self.map.colN, self.dronePosY/self.map.rowN])
                 }
-        print(observation)
         return observation
 
     def _get_info(self):
@@ -220,12 +222,12 @@ class Env(gym.Env):
 
         dronePosX = self.dronePosX + direction[0]
         dronePosY = self.dronePosY + direction[1]
-        print('direction: ', direction)
+        # print('direction: ', direction)
 
         # If staying in an already visited place for the past 20 steps, end the game.
         if dronePosX == self.dronePosX and dronePosY == self.dronePosY:
-            print('staying still!')
-            print('staying still count: ', self.stayStillCnt)
+            # print('staying still!')
+            # print('staying still count: ', self.stayStillCnt)
             self.stayStillCnt += 1
         else:
             self.stayStillCnt = 0
@@ -240,6 +242,8 @@ class Env(gym.Env):
 
         done = False
         if self.stayStillCnt > 20:
+            done = True
+        if self.map.visit[dronePosX][dronePosY] > 20:
             done = True
         if self.map.getCoverage() > self.END_COVERAGE_THRESH:
             done = True
@@ -263,7 +267,7 @@ class Env(gym.Env):
     def render(self, render_mode='rgb_array'):
         colorImage = cv2.merge([self.map.img, self.map.img, self.map.img])
         zeros = np.zeros_like(self.map.visit)
-        redPath = cv2.merge([zeros, zeros, self.map.visit])
+        redPath = cv2.merge([np.ones_like(self.map.visit)*255, zeros, self.map.visit])
         _, mask = cv2.threshold(self.map.visit, 1, 255, cv2.THRESH_BINARY)
         mask = mask/255
         maskColor = cv2.merge([mask, mask, mask])
