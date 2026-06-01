@@ -103,10 +103,12 @@ class Map:
         visit_uniques, visit_counts = np.unique(self.visit, return_counts=True)
         visit_countDict = dict(zip(visit_uniques, visit_counts))
         
+        unseen_cnt = 0
         seen_cnt = 0
-        # Put like this to avoid KeyError when there is no 255 in visit_countDict
-        if 255 in visit_countDict:
-            seen_cnt = visit_countDict[255]
+
+        if 0 in visit_countDict:
+            unseen_cnt = visit_countDict[0]
+        seen_cnt = visit_size - unseen_cnt
 
         coverage = seen_cnt/visit_size
         return coverage
@@ -133,7 +135,7 @@ class Env(gym.Env):
     VISIT_PENALTY = -0.02
     HOVER_PENALTY = -0.1
     STAY_STILL_PENALTY = -0.1
-    COVERAGE_DELTA_REWARD = 2.0
+    COVERAGE_DELTA_REWARD = 10.0
 
     def _get_obs(self):
         local_map, local_visit = self.map.getLocalView(self.dronePosX, self.dronePosY)
