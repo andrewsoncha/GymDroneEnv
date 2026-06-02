@@ -94,7 +94,20 @@ class Map:
             new_nonTarget_seen = new_map_countDict[0]
         new_target_seen = new_cells_seen_cnt - new_nonTarget_seen
 
-        old_cells_cnt = self.visionRange**2 - new_cells_seen_cnt
+        # June 2nd, 2026 - Andrew Chang.
+        # Originally, the below part was 
+        # old_cells_cnt = self.visionRange**2 - new_cells_seen_cnt
+        # However, we now subtract new_cells_seen_cnt from self.visionRange instead of self.visionRange**2
+        # because we want to know among the "newly seen edge" cells that are newly seen while moving
+        # how many have been previously seen and how many have not.
+        # Because of this, the maximum amount of "newly seen edge" cells are the length of
+        # a column or a row, which is self.visionRange.
+        # We add the first if statement in case of the initial step, where every cell
+        # in range (self.visionRange**2) is a newly seen cell.
+        if len(newlySeenCoor) == self.visionRange**2:
+            old_cells_cnt = 0
+        else:
+            old_cells_cnt = self.visionRange - new_cells_seen_cnt
 
         return new_cells_seen_cnt, new_target_seen, new_nonTarget_seen, old_cells_cnt
 
@@ -125,7 +138,7 @@ class Env(gym.Env):
     BOUNDS_MARGIN = 50
 
     DEFAULT_PENALTY = -0.01
-    NEW_NONTARGET_REWARD = 0.005
+    NEW_NONTARGET_REWARD = 0.015
     NEW_TARGET_REWARD = 1.0
     ALREADY_SEEN_PENALTY = -0.005
     CLOSE_TO_BOUNDS_PENALTY = -5.0
