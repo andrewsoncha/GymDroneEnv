@@ -15,28 +15,35 @@ def drawRandomCircles(imageShape, circleN, maxRadius):
     return image
 
 class Map:
-    def __init__(self, visionRange = 5, imgPath='', seed=None):
+    def __init__(self, visionRange = 5, seed=None):
         if seed is not None:
             random.seed(seed)
 
         self.img = drawRandomCircles((300, 300), 60, 35)
         maxVal = np.max(self.img)
-        # self.img = (cv2.distanceTransform(self.img, cv2.DIST_L2, 0)*12).astype(np.uint8)
         self.visit = np.zeros_like(self.img)
         self.imgBiggerSize = np.zeros_like
-        # cv2.imshow('loaded map', self.img)
-        # cv2.waitKey(1)
         self.rowN = self.img.shape[0]
         self.colN = self.img.shape[1]
+        print('self.rowN: ', self.rowN)
+        print('self.colN: ', self.colN)
         self.visionRange = visionRange
+        self.paddedRowN = self.rowN+self.visionRange*2
+        self.paddedColN = self.colN+self.visionRange*2
+        self.paddedImg = np.zeros(shape = (self.paddedRowN, self.paddedColN), dtype=np.uint8)
+        self.paddedVisit = np.zeros_like(self.paddedImg) 
+        self.paddedImg[self.visionRange: self.rowN+self.visionRange, self.visionRange: self.colN +self.visionRange] = self.img
 
     def isOutOfBounds(self, posX, posY):
-        if posX < self.visionRange//2+1 or posX > self.colN-self.visionRange//2-1:
+        if posX < 0 or posX >= self.colN :
             return True
-        if posY < self.visionRange//2+1 or posY > self.rowN-self.visionRange//2-1:
+        if posY < 0 or posY > self.rowN:
             return True
         return False
 
+    # June 23st, 2026. - Andrew Chang
+    # This function probably shouldn't be used anymore
+    # This was written when the environment actively punished when the model got near the edge instead of just having it be impossible to go out of bounds
     def getDistToBounds(self, posX, posY):
         leftDist = posX - self.visionRange//2
         rightDist = self.colN - self.visionRange//2 - posX
@@ -48,13 +55,17 @@ class Map:
         if self.isOutOfBounds(posX, posY):
             return None
         else:
-            return self.img[posX, posY]
+            paddedX = posX + self.visionRange
+            paddedY = posY + self.visionRange
+            return self.paddedImg[paddedX, paddedY]
 
     def visitPos(self, posX, posY):
-        for x in range(posX-self.visionRange//2, posX+self.visionRange//2+1):
-            for y in range(posY-self.visionRange//2, posY+self.visionRange//2+1):
-                if self.visit[x][y] < 255:
-                    self.visit[x][y] += 1
+        for x in range(posX-self.visionRange, posX+self.visionRange+1):
+            for y in range(posY-self.visionRange, posY+self.visionRange+1):
+                paddedX = posX + self.visionRange
+                paddedY = posY + self.visionRange
+                if self.paddedVisit[x][y] < 255:
+                    self.paddedVisit[x][y] += 1
 
     # The method is named kinda wrong. Returns if there is any cell that has not been seen before visible currently -- Andrew Chang Apr. 22 2026
     def isVisited(self, posX, posY):
@@ -68,12 +79,10 @@ class Map:
             return False
 
     def getLocalView(self, posX, posY):
-        if self.isOutOfBounds(posX, posY):
-            mapView = [[0]*self.visionRange]*self.visionRange
-            visitView = [[0]*self.visionRange]*self.visionRange
-        else:
-            mapView = self.img[posX-self.visionRange//2:posX+self.visionRange//2+1, posY-self.visionRange//2:posY+self.visionRange//2+1] 
-            visitView = self.visit[posX-self.visionRange//2:posX+self.visionRange//2+1, posY-self.visionRange//2:posY+self.visionRange//2+1]
+        paddedX = posX + self.visionRange
+        paddedY = posY + self.visionRange
+        mapView = self.paddedImg[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
+        visitView = self.paddedVisit[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
         return mapView, visitView
 
     def getTargetInView(self, dronePosX, dronePosY):
@@ -149,13 +158,14 @@ class Env(gym.Env):
     HOVER_PENALTY = -0.1
     STAY_STILL_PENALTY = -0.1
     COVERAGE_DELTA_REWARD = 10.0
+    TOTAL_TIMESTEP_CAP = 950
 
     def _get_obs(self):
         local_map, local_visit = self.map.getLocalView(self.dronePosX, self.dronePosY)
         observation = {
+                'drone_pos': np.array([self.dronePosX/self.map.colN, self.dronePosY/self.map.rowN]),
                 'local_map': local_map/255.0,
-                'local_visit': local_visit/255.0,
-                'drone_pos': np.array([self.dronePosX/self.map.colN, self.dronePosY/self.map.rowN])
+                'local_visit': local_visit/255.0
                 }
         return observation
 
@@ -163,7 +173,7 @@ class Env(gym.Env):
         local_map, local_visit = self.map.getLocalView(self.dronePosX, self.dronePosY)
         imgVal = self.map.getImgValue(self.dronePosX, self.dronePosY)
         return {
-                "DronePos": (self.dronePosX, self.dronePosY),
+                "drone_pos": (self.dronePosX, self.dronePosY),
                 "local_map": local_map,
                 "local_visit": local_visit,
                 "current_val": imgVal
@@ -171,10 +181,11 @@ class Env(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.map = Map(visionRange = self.VISION_RANGE, imgPath = self.map_path, seed=self.map_seed)
+        self.map = Map(visionRange = self.VISION_RANGE, seed=self.map_seed)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.stayStillCnt = 0
+        self.envTimestep = 0
         # self.map.visit = np.zeros_like(self.map.img)
         #self.map.visitPos(self.dronePosX, self.dronePosY)
 
@@ -182,18 +193,18 @@ class Env(gym.Env):
         info = self._get_info()
         return observation, info
 
-    def __init__(self, map_path, render_mode="", map_seed = None):
+    def __init__(self, render_mode="", map_seed = None):
         self.map_seed = map_seed
-        self.map_path = map_path
         self.render_mode = render_mode
-        self.map = Map(visionRange = self.VISION_RANGE, imgPath = map_path, seed=map_seed)
+        self.map = Map(visionRange = self.VISION_RANGE, seed=map_seed)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.action_space = gym.spaces.Discrete(5)
+        self.envTimestep = 0
         self.observation_space = gym.spaces.Dict(
                 {
-                    "local_map": gym.spaces.Box(low=0, high=1.0, shape=(self.VISION_RANGE, self.VISION_RANGE), dtype=np.float64),
-                    "local_visit": gym.spaces.Box(low=0, high=1.0, shape=(self.VISION_RANGE, self.VISION_RANGE), dtype=np.float64),
+                    "local_map": gym.spaces.Box(low=0, high=1.0, shape=(self.VISION_RANGE*2+1, self.VISION_RANGE*2+1), dtype=np.float64),
+                    "local_visit": gym.spaces.Box(low=0, high=1.0, shape=(self.VISION_RANGE*2+1, self.VISION_RANGE*2+1), dtype=np.float64),
                     "drone_pos": gym.spaces.Box(low=0, high=1, shape=(2, ), dtype=np.float64)
                     }
                 )
@@ -217,12 +228,8 @@ class Env(gym.Env):
 
         reward += self.ALREADY_SEEN_PENALTY * old_cells_cnt
 
-        #if action == 4: 
-        #    reward += self.HOVER_PENALTY
         if self.stayStillCnt > 2:
             reward += self.STAY_STILL_PENALTY * (self.stayStillCnt - 2)
-
-        reward += self.CLOSE_TO_BOUNDS_PENALTY * max(0, (self.BOUNDS_MARGIN - self.map.getDistToBounds(dronePosX, dronePosY))/self.BOUNDS_MARGIN) ** 2
 
         if self.map.isOutOfBounds(dronePosX, dronePosY):
             reward += self.OUT_OF_BOUNDS_PENALTY
@@ -237,12 +244,9 @@ class Env(gym.Env):
 
         dronePosX = self.dronePosX + direction[0]
         dronePosY = self.dronePosY + direction[1]
-        # print('direction: ', direction)
 
         # If staying in an already visited place for the past 20 steps, end the game.
         if dronePosX == self.dronePosX and dronePosY == self.dronePosY:
-            # print('staying still!')
-            # print('staying still count: ', self.stayStillCnt)
             self.stayStillCnt += 1
         else:
             self.stayStillCnt = 0
@@ -256,15 +260,15 @@ class Env(gym.Env):
         reward = self.getReward(dronePosX, dronePosY, action)
 
         done = False
-        if self.stayStillCnt > 20:
-            done = True
-        if self.map.visit[dronePosX][dronePosY] > 20:
+        if self.envTimestep > self.TOTAL_TIMESTEP_CAP:
             done = True
         if self.map.getCoverage() > self.END_COVERAGE_THRESH:
             done = True
 
         if outOfBounds:
-            done = True
+            #done = True
+            reward += OUT_OF_BOUNDS_PENALTY
+            pass
         else:
             # prev_coverage and new_coverage done from claude suggestion to incentivize more exploration by the RL agent
             prev_coverage = self.map.getCoverage()
@@ -280,19 +284,19 @@ class Env(gym.Env):
         return observation, float(reward), done, truncated, info
 
     def render(self, render_mode='rgb_array'):
-        colorImage = cv2.merge([self.map.img, self.map.img, self.map.img])
-        zeros = np.zeros_like(self.map.visit)
-        redPath = cv2.merge([np.ones_like(self.map.visit)*255, zeros, self.map.visit])
-        _, mask = cv2.threshold(self.map.visit, 1, 255, cv2.THRESH_BINARY)
+        colorImage = cv2.merge([self.map.paddedImg, self.map.paddedImg, self.map.paddedImg])
+        zeros = np.zeros_like(self.map.paddedVisit)
+        redPath = cv2.merge([np.ones_like(self.map.paddedVisit)*255, zeros, self.map.paddedVisit])
+        _, mask = cv2.threshold(self.map.paddedVisit, 1, 255, cv2.THRESH_BINARY)
         mask = mask/255
         maskColor = cv2.merge([mask, mask, mask])
         frame = colorImage
         for c in range(3):
             frame[:,:,c] = colorImage[:,:,c]*(1-mask) + redPath[:,:,c]*mask
-        resizedFrame = cv2.resize(frame, (200, 200))
+        resizedFrame = cv2.resize(frame, (500, 500))
         return resizedFrame
 
 
 if __name__ == '__main__':
-    env = Env('map.png')
+    env = Env()
     cv2.waitKey(1000)
