@@ -37,11 +37,11 @@ class Map:
     def isOutOfBounds(self, posX, posY):
         if posX < 0 or posX >= self.colN :
             return True
-        if posY < 0 or posY > self.rowN:
+        if posY < 0 or posY >= self.rowN:
             return True
         return False
 
-    # June 23st, 2026. - Andrew Chang
+    # June 23rd, 2026. - Andrew Chang
     # This function probably shouldn't be used anymore
     # This was written when the environment actively punished when the model got near the edge instead of just having it be impossible to go out of bounds
     def getDistToBounds(self, posX, posY):
@@ -81,6 +81,8 @@ class Map:
     def getLocalView(self, posX, posY):
         paddedX = posX + self.visionRange
         paddedY = posY + self.visionRange
+        print(f'posX: {posX}   posY: {posY}')
+        print(f'paddedX: {paddedX}   paddedY: {paddedY}')
         mapView = self.paddedImg[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
         visitView = self.paddedVisit[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
         return mapView, visitView
@@ -267,8 +269,7 @@ class Env(gym.Env):
 
         if outOfBounds:
             #done = True
-            reward += OUT_OF_BOUNDS_PENALTY
-            pass
+            reward += self.OUT_OF_BOUNDS_PENALTY
         else:
             # prev_coverage and new_coverage done from claude suggestion to incentivize more exploration by the RL agent
             prev_coverage = self.map.getCoverage()
@@ -299,4 +300,9 @@ class Env(gym.Env):
 
 if __name__ == '__main__':
     env = Env()
+    viewMap, viewVisit = env.map.getLocalView(env.map.rowN, env.map.colN)
+    print(f'viewMap shape: {viewMap.shape}')
+    print(f'viewVisit shape: {viewVisit.shape}')
+    print(f'isOutOfBounds(0, 0): {env.map.isOutOfBounds(0, 0)}')
+    print(f'isOutOfBounds(rowN, colN): {env.map.isOutOfBounds(env.map.rowN, env.map.colN)}')
     cv2.waitKey(1000)

@@ -51,7 +51,7 @@ def make_env(rank):
         return env
     return _init
 
-TRAIN_TIMESTEPS =  5_000_0
+TRAIN_TIMESTEPS =  5_000
 if __name__ == '__main__':
     log_dir = 'log/'
     os.makedirs(log_dir, exist_ok=True)
@@ -59,21 +59,26 @@ if __name__ == '__main__':
 
     N_ENVS = 4
     #env = SubprocVecEnv([make_env(i) for i in range(N_ENVS)])
-    env = Env('map.png', render_mode = 'rgb_array')
+    env = Env(render_mode = 'rgb_array')
     
     plateau_callback = StopOnPlateauCallback()
 
-    # model = PPO('MultiInputPolicy', env, verbose=1)
+    policy_kwargs = dict(
+            n_lstm_layers = 1024,
+            lstm_hidden_size = 128
+    )
+
+    model = PPO('MultiInputPolicy', env, verbose=1)
+    '''
     model = RecurrentPPO('MultiInputLstmPolicy', env, 
                          verbose=1, 
-                         n_steps = 1024, 
                          batch_size=256,
                          n_epochs=10,
                          learning_rate=3e-4,
-                         tensorboard_log='./tensorboard/')
-    model.load('drone_search')
+                         tensorboard_log='./tensorboard/',
+                         policy_kwargs = policy_kwargs)
+    '''
     model.learn(total_timesteps=TRAIN_TIMESTEPS, callback=plateau_callback)
-    # model.load('drone_search.zip')
     model.save('drone_search.zip')
 
     # vec_env = model.get_env()
@@ -85,6 +90,7 @@ if __name__ == '__main__':
         action, _state = model.predict(obs, deterministic=True)
         #print('action:',action)
         obs, reward, done, Truncated, info = env.step(int(action))
+        print('drone_pos:', obs['drone_pos'])
         rewardSum += reward
         print('reward: ', reward)
 
