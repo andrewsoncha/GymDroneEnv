@@ -4,22 +4,42 @@ import numpy as np
 import gymnasium as gym
 from random import randint
 import random
+from math import sqrt
 
-def drawRandomCircles(imageShape, circleN, maxRadius):
+'''
+Edited by Andrew Chang July 7th, 2026.
+Original function was drawRandomCircles (see older branches)
+
+Previously: Draws (circleN) amount of circles of random radius in the range of (0, maxRadius).
+            Each cell that is part of a circle is set as value 255.0. 
+
+Now: Draws (circleN) amount of circles of random radius in the range of (0, maxRadius).
+     Each cell that is part of a circle is set as a floating point number set between 0 and 255.
+     The cell values are higher the close they are to the center of its circle. 
+     The equation for the cell value is 255 * ( 1 - distance_from_center / maxRadius)
+'''
+def drawProbabilityCircles(imageShape, circleN, maxRadius):
     image = np.zeros(imageShape, dtype=np.uint8)
+    print('image shape: ', image.shape)
     width, height = imageShape
     for i in range(circleN):
         center = (randint(0, width), randint(0, height))
         radius = randint(0, maxRadius)
-        cv2.circle(image, center, radius, color=255, thickness=-1)
-    return image
+
+        cv2.circle(image, center, radius, 255, -1)
+    dist = cv2.distanceTransform(image, cv2.DIST_L2, 5)
+    min_dist, max_dist = np.min(dist), np.max(dist)
+    norm_dist = (dist - min_dist)/(max_dist - min_dist)*255
+    return norm_dist 
 
 class Map:
     def __init__(self, visionRange = 5, seed=None):
         if seed is not None:
             random.seed(seed)
 
-        self.img = drawRandomCircles((300, 300), 60, 35)
+        self.img = drawProbabilityCircles((300, 300), 60, 35)
+        self.img_sum = np.sum(self.img)
+        print('self.img_sum: ', self.img_sum)
         maxVal = np.max(self.img)
         self.visit = np.zeros_like(self.img)
         self.imgBiggerSize = np.zeros_like
@@ -32,6 +52,7 @@ class Map:
         self.paddedColN = self.colN+self.visionRange*2
         self.paddedImg = np.zeros(shape = (self.paddedRowN, self.paddedColN), dtype=np.uint8)
         self.paddedVisit = np.zeros_like(self.paddedImg) 
+        self.paddedVisitImg = np.zeros_like(self.paddedImg)
         self.paddedImg[self.visionRange: self.rowN+self.visionRange, self.visionRange: self.colN +self.visionRange] = self.img
 
     def isOutOfBounds(self, posX, posY):
@@ -64,8 +85,9 @@ class Map:
             for y in range(posY-self.visionRange, posY+self.visionRange+1):
                 paddedX = posX + self.visionRange
                 paddedY = posY + self.visionRange
-                if self.paddedVisit[x][y] < 255:
-                    self.paddedVisit[x][y] += 1
+                if self.paddedVisit[paddedX][paddedY] < 255:
+                    self.paddedVisit[paddedX][paddedY] += 1
+                self.paddedVisitImg[paddedX-self.visionRange:paddedX+self.visionRange, paddedY-self.visionRange:paddedY+self.visionRange] = self.paddedImg[paddedX-self.visionRange:paddedX+self.visionRange, paddedY-self.visionRange:paddedY+self.visionRange]
 
     # The method is named kinda wrong. Returns if there is any cell that has not been seen before visible currently -- Andrew Chang Apr. 22 2026
     def isVisited(self, posX, posY):
@@ -81,8 +103,8 @@ class Map:
     def getLocalView(self, posX, posY):
         paddedX = posX + self.visionRange
         paddedY = posY + self.visionRange
-        print(f'posX: {posX}   posY: {posY}')
-        print(f'paddedX: {paddedX}   paddedY: {paddedY}')
+        # print(f'posX: {posX}   posY: {posY}')
+        # print(f'paddedX: {paddedX}   paddedY: {paddedY}')
         mapView = self.paddedImg[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
         visitView = self.paddedVisit[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
         return mapView, visitView
@@ -122,19 +144,21 @@ class Map:
 
         return new_cells_seen_cnt, new_target_seen, new_nonTarget_seen, old_cells_cnt
 
+    '''
+    Modified on July 8th, 2026 by Andrew Chang.
+
+    Originally, the environment only allowed discrete values in maps.
+    If a cell was a target zone, it was a 1, if else, it was a 0.
+    Because of this, coverage was #(covered target zone cells) / #(total target zone cells)
+    Now, the cells can have any real value in between 0.0 and 1.0. 
+    Because of this, coverage is now defined as sum(covered target zone cells) / sum(all cells)
+    '''
     def getCoverage(self):
-        visit_size = len(self.visit) * len(self.visit[0])
-        visit_uniques, visit_counts = np.unique(self.visit, return_counts=True)
-        visit_countDict = dict(zip(visit_uniques, visit_counts))
-        
-        unseen_cnt = 0
-        seen_cnt = 0
+        covered_sum = np.sum(self.paddedVisitImg)
+        # cv2.imshow('visit img', self.paddedVisitImg)
+        # cv2.waitKey(10)
 
-        if 0 in visit_countDict:
-            unseen_cnt = visit_countDict[0]
-        seen_cnt = visit_size - unseen_cnt
-
-        coverage = seen_cnt/visit_size
+        coverage = covered_sum / self.img_sum
         return coverage
 
 class Actions(Enum):
@@ -188,6 +212,7 @@ class Env(gym.Env):
         self.dronePosY = self.map.rowN//2
         self.stayStillCnt = 0
         self.envTimestep = 0
+        self.prevCoverage = 0
         # self.map.visit = np.zeros_like(self.map.img)
         #self.map.visitPos(self.dronePosX, self.dronePosY)
 
@@ -203,6 +228,7 @@ class Env(gym.Env):
         self.dronePosY = self.map.rowN//2
         self.action_space = gym.spaces.Discrete(5)
         self.envTimestep = 0
+        self.prevCoverage = 0
         self.observation_space = gym.spaces.Dict(
                 {
                     "local_map": gym.spaces.Box(low=0, high=1.0, shape=(self.VISION_RANGE*2+1, self.VISION_RANGE*2+1), dtype=np.float64),
@@ -219,16 +245,12 @@ class Env(gym.Env):
                 }
         self.stayStillCnt = 0
 
+    '''
+    Edited July 8th, 2026 by Andrew Chang.
+    Changed to be simpler and to support non-discrete values
+    '''
     def getReward(self, dronePosX, dronePosY, action):
         reward = self.DEFAULT_PENALTY
-
-        new_cells_seen_cnt, new_target_seen, new_nonTarget_seen, old_cells_cnt = self.map.getTargetInView(dronePosX, dronePosY)
-
-        reward += self.NEW_TARGET_REWARD * new_target_seen
-
-        reward += self.NEW_NONTARGET_REWARD * new_nonTarget_seen
-
-        reward += self.ALREADY_SEEN_PENALTY * old_cells_cnt
 
         if self.stayStillCnt > 2:
             reward += self.STAY_STILL_PENALTY * (self.stayStillCnt - 2)
@@ -239,6 +261,11 @@ class Env(gym.Env):
         coverage = self.map.getCoverage()
         if coverage > self.END_COVERAGE_THRESH:
             reward += self.COVERAGE_END_REWARD
+        else:
+            coverageDiff = coverage - self.prevCoverage
+            # print('coverageDiff: ', coverageDiff)
+            reward += self.COVERAGE_DELTA_REWARD * coverageDiff
+            self.prevCoverage = coverage
         return reward
 
     def step(self, action, permanent = True):
@@ -269,13 +296,9 @@ class Env(gym.Env):
 
         if outOfBounds:
             #done = True
-            reward += self.OUT_OF_BOUNDS_PENALTY
+            reward = self.OUT_OF_BOUNDS_PENALTY
         else:
-            # prev_coverage and new_coverage done from claude suggestion to incentivize more exploration by the RL agent
-            prev_coverage = self.map.getCoverage()
             self.map.visitPos(self.dronePosX, self.dronePosY)
-            new_coverage = self.map.getCoverage()
-            reward += self.COVERAGE_DELTA_REWARD * (new_coverage - prev_coverage)
 
         observation = self._get_obs()
         info = self._get_info()
@@ -300,9 +323,3 @@ class Env(gym.Env):
 
 if __name__ == '__main__':
     env = Env()
-    viewMap, viewVisit = env.map.getLocalView(env.map.rowN, env.map.colN)
-    print(f'viewMap shape: {viewMap.shape}')
-    print(f'viewVisit shape: {viewVisit.shape}')
-    print(f'isOutOfBounds(0, 0): {env.map.isOutOfBounds(0, 0)}')
-    print(f'isOutOfBounds(rowN, colN): {env.map.isOutOfBounds(env.map.rowN, env.map.colN)}')
-    cv2.waitKey(1000)
