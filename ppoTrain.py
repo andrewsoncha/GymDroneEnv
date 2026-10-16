@@ -47,21 +47,22 @@ class StopOnPlateauCallback(BaseCallback):
 
 def make_env(rank):
     def _init():
-        env = Env('map.png', render_mode = 'rgb_array')
+        env = Env(render_mode = 'rgb_array', map_seed=rank)
+        env = Monitor(env)
         return env
     return _init
 
-TRAIN_TIMESTEPS =  5_000
+TRAIN_TIMESTEPS =  5_000_000
 if __name__ == '__main__':
     log_dir = 'log/'
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs('./tensorboard/', exist_ok=True)
 
-    N_ENVS = 4
-    #env = SubprocVecEnv([make_env(i) for i in range(N_ENVS)])
-    env = Env(render_mode = 'rgb_array')
+    N_ENVS = 8 
+    env = SubprocVecEnv([make_env(i) for i in range(N_ENVS)])
+    # env = Env(render_mode = 'rgb_array')
     
-    plateau_callback = StopOnPlateauCallback()
+    # plateau_callback = StopOnPlateauCallback()
 
     policy_kwargs = dict(
             n_lstm_layers = 1024,
@@ -78,18 +79,20 @@ if __name__ == '__main__':
                          tensorboard_log='./tensorboard/',
                          policy_kwargs = policy_kwargs)
     '''
-    model.learn(total_timesteps=TRAIN_TIMESTEPS, callback=plateau_callback)
+    # model.learn(total_timesteps=TRAIN_TIMESTEPS, callback=plateau_callback)
+    model.learn(total_timesteps=TRAIN_TIMESTEPS)
     model.save('drone_search.zip')
 
     # vec_env = model.get_env()
-    obs, info = env.reset()
+    eval_env = Env(render_mode='rbg_array', map_seed=99)
+    obs, info = eval_env.reset()
 
     rewardSum = 0
     
     for i in range(1000):
         action, _state = model.predict(obs, deterministic=True)
         #print('action:',action)
-        obs, reward, done, Truncated, info = env.step(int(action))
+        obs, reward, done, Truncated, info = eval_env.step(int(action))
         print('drone_pos:', obs['drone_pos'])
         rewardSum += reward
         print('reward: ', reward)
@@ -99,8 +102,8 @@ if __name__ == '__main__':
         if done:
             print('done! rewardSum: ', rewardSum)
             rewardSum = 0
-            env.reset()
-        img = env.render()
+            eval_envenv.reset()
+        img = eval_env.render()
         cv2.imshow('frame', img)
         cv2.imwrite(f'frame_{i:03}.jpg', img)
         cv2.waitKey(10)
@@ -110,5 +113,5 @@ if __name__ == '__main__':
     # mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=100, deterministic=True)
     # print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
 
-    plot_results([log_dir], TRAIN_TIMESTEPS, results_plotter.X_TIMESTEPS, "PPO results")
-    plt.show()
+    # plot_results([log_dir], TRAIN_TIMESTEPS, results_plotter.X_TIMESTEPS, "PPO results")
+    # plt.show()
