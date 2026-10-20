@@ -222,6 +222,9 @@ class Env(gym.Env):
     CELL_REWARD        =  0.4    # cell_reward:            reward per unit of newly covered target area
     STAY_STILL_PENALTY = -0.4
 
+    EXPLORATION_REWARD = 0.05  # per newly visited cell regardless of type
+    CELL_REWARD        = 0.4   # per newly visited target cell (on top of exploration reward)
+
     # Episode termination
     END_COVERAGE_THRESH  = 0.85
     TOTAL_TIMESTEP_CAP   = 8 * MAP_LEN * MAP_LEN
@@ -344,11 +347,24 @@ class Env(gym.Env):
             # Computed after visitPos so coverage delta reflects this step only.
             # Equivalent to uavSim's cells_collected * cell_reward, but continuous
             # because our map uses probability values rather than binary cells.
+            '''
             prev_coverage = self.map.getCoverage()
             self.map.visitPos(self.dronePosX, self.dronePosY)
             new_coverage = self.map.getCoverage()
             newly_covered = (new_coverage - prev_coverage) * self.map.img_sum
             reward += self.CELL_REWARD * newly_covered
+            '''
+            prev_coverage = self.map.getCoverage()
+            prev_visited = np.sum(self.map.paddedVisitMask)
+            self.map.visitPos(self.dronePosX, self.dronePosY)
+            new_coverage = self.map.getCoverage()
+            new_visited = np.sum(self.map.paddedVisitMask)
+
+            newly_visited = (new_visited - prev_visited) / 255
+            newly_covered_targets = (new_coverage - prev_coverage) * self.map.img_sum
+
+            reward += self.EXPLORATION_REWARD * newly_visited
+            reward += self.CELL_REWARD * newly_covered_targets
 
         self.envTimestep += 1
 
