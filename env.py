@@ -107,14 +107,19 @@ class Map:
             for y in range(paddedY - self.visionRange, paddedY + self.visionRange + 1):
                 if self.paddedVisit[x][y] < 255:
                     self.paddedVisit[x][y] += 1
-        # Sync self.visit from paddedVisit so getCenteredVisit works
-        self.visit[
-            posX - self.visionRange: posX + self.visionRange + 1,
-            posY - self.visionRange: posY + self.visionRange + 1
-        ] = self.paddedVisit[
-            paddedX - self.visionRange: paddedX + self.visionRange + 1,
-            paddedY - self.visionRange: paddedY + self.visionRange + 1
-        ]
+        x_start = max(0, posX - self.visionRange)
+        x_end   = min(self.rowN, posX + self.visionRange + 1)
+        y_start = max(0, posY - self.visionRange)
+        y_end   = min(self.colN, posY + self.visionRange + 1)
+
+        px_start = paddedX - self.visionRange + (x_start - (posX - self.visionRange))
+        px_end   = px_start + (x_end - x_start)
+        py_start = paddedY - self.visionRange + (y_start - (posY - self.visionRange))
+        py_end   = py_start + (y_end - y_start)
+
+        self.visit[x_start:x_end, y_start:y_end] = \
+            self.paddedVisit[px_start:px_end, py_start:py_end]
+        
         self.paddedVisitMask[
             paddedX-self.visionRange:paddedX+self.visionRange+1,
             paddedY-self.visionRange:paddedY+self.visionRange+1
