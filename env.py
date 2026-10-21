@@ -107,6 +107,14 @@ class Map:
             for y in range(paddedY - self.visionRange, paddedY + self.visionRange + 1):
                 if self.paddedVisit[x][y] < 255:
                     self.paddedVisit[x][y] += 1
+        # Sync self.visit from paddedVisit so getCenteredVisit works
+        self.visit[
+            posX - self.visionRange: posX + self.visionRange + 1,
+            posY - self.visionRange: posY + self.visionRange + 1
+        ] = self.paddedVisit[
+            paddedX - self.visionRange: paddedX + self.visionRange + 1,
+            paddedY - self.visionRange: paddedY + self.visionRange + 1
+        ]
         self.paddedVisitMask[
             paddedX-self.visionRange:paddedX+self.visionRange+1,
             paddedY-self.visionRange:paddedY+self.visionRange+1
@@ -214,6 +222,8 @@ class Env(gym.Env):
     MAP_LEN = 50
     MAP_CIRCLE_N = 5
 
+    ALREADY_SEEN_PENALTY = -0.01 # per already-visited cell in view
+
     # Reward constants matched to uavSim "Learning to Recharge" structure (without charging).
     # Edited by Andrew Chang [DATE].
     # uavSim equivalent names shown in comments.
@@ -275,7 +285,7 @@ class Env(gym.Env):
         self.map = Map(mapLen = self.MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=map_seed)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
-        self.action_space = gym.spaces.Discrete(5)
+        self.action_space = gym.spaces.Discrete(4)
         self.envTimestep = 0
         self.prevCoverage = 0
         self.observation_space = gym.spaces.Dict(
@@ -292,7 +302,6 @@ class Env(gym.Env):
                 np.int64(Actions.DOWN.value): np.array([0, -1]),
                 np.int64(Actions.LEFT.value): np.array([-1, 0]),
                 np.int64(Actions.RIGHT.value): np.array([1, 0]),
-                np.int64(Actions.HOVER.value): np.array([0, 0])
                 }
         self.stayStillCnt = 0
 
@@ -315,26 +324,23 @@ class Env(gym.Env):
         if self.stayStillCnt > 0:
             reward += self.STAY_STILL_PENALTY * self.stayStillCnt
 
+        _, _, _, old_cells_cnt = self.map.getTargetInView(dronePosX, dronePosY)
+        reward += self.ALREADY_SEEN_PENALTY * old_cells_cnt
+
         return reward
 
     def step(self, action, permanent=True):
         direction = self._action_to_direction[action]
-
         dronePosX = self.dronePosX + direction[0]
         dronePosY = self.dronePosY + direction[1]
 
-        if dronePosX == self.dronePosX and dronePosY == self.dronePosY:
-            self.stayStillCnt += 1
-        else:
-            self.stayStillCnt = 0
+        # Clamp to valid range — OOB moves are ignored, no penalty
+        dronePosX = np.clip(dronePosX, 0, self.map.colN - 1)
+        dronePosY = np.clip(dronePosY, 0, self.map.rowN - 1)
 
-        outOfBounds = self.map.isOutOfBounds(dronePosX, dronePosY)
-        if not outOfBounds:
-            self.dronePosX = dronePosX
-            self.dronePosY = dronePosY
+        self.dronePosX = dronePosX
+        self.dronePosY = dronePosY
 
-        # Base reward: movement penalty + OOB penalty if applicable.
-        # Uses attempted position so OOB penalty fires correctly.
         reward = self.getReward(dronePosX, dronePosY)
 
         done = False
