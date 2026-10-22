@@ -273,6 +273,7 @@ class Env(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
+        self.map_seed = random.randint(0, 9999999)
         self.map = Map(mapLen = self.MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=self.map_seed)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
