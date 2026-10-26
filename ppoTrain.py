@@ -52,13 +52,13 @@ def make_env(rank):
         return env
     return _init
 
-TRAIN_TIMESTEPS =  5_000_000
+TRAIN_TIMESTEPS =  5_000_0
 if __name__ == '__main__':
     log_dir = 'log/'
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs('./tensorboard/', exist_ok=True)
 
-    N_ENVS = 8 
+    N_ENVS = 32 
     env = SubprocVecEnv([make_env(i) for i in range(N_ENVS)])
     # env = Env(render_mode = 'rgb_array')
     
@@ -81,7 +81,7 @@ if __name__ == '__main__':
     '''
     # model.learn(total_timesteps=TRAIN_TIMESTEPS, callback=plateau_callback)
     model.learn(total_timesteps=TRAIN_TIMESTEPS)
-    model.save('drone_search.zip')
+    model.save('drone_search_test_train.zip')
 
     # vec_env = model.get_env()
     eval_env = Env(render_mode='rbg_array', map_seed=99)
@@ -102,7 +102,7 @@ if __name__ == '__main__':
         if done:
             print('done! rewardSum: ', rewardSum)
             rewardSum = 0
-            eval_envenv.reset()
+            eval_env.reset()
         img = eval_env.render()
         cv2.imshow('frame', img)
         cv2.imwrite(f'frame_{i:03}.jpg', img)
