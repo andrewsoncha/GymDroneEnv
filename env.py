@@ -42,6 +42,7 @@ def drawBinaryCircles(imageShape, circleN, maxRadius):
     return image 
 
 
+# TODO: FIX VISIT MECHANISM YOU FUCKING IDIOT
 class Map:
     def __init__(self, mapLen, circleN, visionRange = 5, seed=None):
         if seed is not None:
@@ -59,9 +60,9 @@ class Map:
         self.paddedRowN = self.rowN+self.visionRange*2
         self.paddedColN = self.colN+self.visionRange*2
         self.paddedImg = np.zeros(shape = (self.paddedRowN, self.paddedColN), dtype=np.uint8)
-        self.paddedVisit = np.zeros_like(self.paddedImg) 
-        self.paddedVisitMask = np.zeros_like(self.paddedImg)
-        self.paddedVisitImg = np.zeros_like(self.paddedImg)
+        self.visitHistory = np.zeros(shape = (self.paddedRowN, self.paddedColN), dtype=np.float64)  # History of cells covered by the agent. Decays over time.
+        self.coverageMask = np.zeros_like(self.paddedImg) # Mask of parts of the map that are seen by the agent. Padded Size
+        self.seenAreas = np.zeros_like(self.paddedImg) # Parts of the map that are seen by the agent. Padded Size
         self.paddedImg[self.visionRange: self.rowN+self.visionRange, self.visionRange: self.colN +self.visionRange] = self.img
 
     def isOutOfBounds(self, posX, posY):
@@ -101,12 +102,13 @@ class Map:
                 self.paddedVisitImg[paddedX-self.visionRange:paddedX+self.visionRange, paddedY-self.visionRange:paddedY+self.visionRange] = self.paddedImg[paddedX-self.visionRange:paddedX+self.visionRange, paddedY-self.visionRange:paddedY+self.visionRange]
     '''
     def visitPos(self, posX, posY):
+        self.visitHistory -= 1.0
+        self.visitHistory = np.clip(self.visitHistory, 0, 255)
         paddedX = posX + self.visionRange
         paddedY = posY + self.visionRange
         for x in range(paddedX - self.visionRange, paddedX + self.visionRange + 1):
             for y in range(paddedY - self.visionRange, paddedY + self.visionRange + 1):
-                if self.paddedVisit[x][y] < 255:
-                    self.paddedVisit[x][y] += 1
+                self.visitHistory[x][y] += 255
         x_start = max(0, posX - self.visionRange)
         x_end   = min(self.rowN, posX + self.visionRange + 1)
         y_start = max(0, posY - self.visionRange)
@@ -117,14 +119,13 @@ class Map:
         py_start = paddedY - self.visionRange + (y_start - (posY - self.visionRange))
         py_end   = py_start + (y_end - y_start)
 
-        self.visit[x_start:x_end, y_start:y_end] = \
-            self.paddedVisit[px_start:px_end, py_start:py_end]
+        self.visit[x_start:x_end, y_start:y_end] = self.visitHistory[px_start:px_end, py_start:py_end]
         
-        self.paddedVisitMask[
+        self.coverageMask[
             paddedX-self.visionRange:paddedX+self.visionRange+1,
             paddedY-self.visionRange:paddedY+self.visionRange+1
         ] = 255
-        self.paddedVisitImg[
+        self.seenAreas[
             paddedX-self.visionRange:paddedX+self.visionRange+1,
             paddedY-self.visionRange:paddedY+self.visionRange+1
         ] = self.paddedImg[
@@ -147,8 +148,8 @@ class Map:
         paddedX = posX + self.visionRange
         paddedY = posY + self.visionRange
         mapView = self.paddedImg[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
-        visitView = self.paddedVisit[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
-        return mapView, visitView
+        visitView = self.visitHistory[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
+        return mapView, visitView 
 
     def getTargetInView(self, dronePosX, dronePosY):
         if self.isOutOfBounds(dronePosX, dronePosY):
@@ -197,7 +198,7 @@ class Map:
         endX, endY = startX+self.rowN, startY+self.colN
         globalVisit  = np.zeros((self.rowN*2, self.colN*2), np.uint8)
         # globalView[startX:endX, startY:endY] = self.img
-        globalVisit[startX:endX, startY:endY] = self.paddedVisitMask[self.visionRange:self.rowN+self.visionRange, self.visionRange:self.colN+self.visionRange]
+        globalVisit[startX:endX, startY:endY] = self.coverageMask[self.visionRange:self.rowN+self.visionRange, self.visionRange:self.colN+self.visionRange]
         return globalVisit
 
     '''
@@ -210,7 +211,7 @@ class Map:
     Because of this, coverage is now defined as sum(covered target zone cells) / sum(all cells)
     '''
     def getCoverage(self):
-        covered_sum = np.sum(self.paddedVisitImg) / 255
+        covered_sum = np.sum(self.seenAreas) / 255
         coverage = covered_sum / self.img_sum
         return coverage
 
@@ -227,10 +228,10 @@ class Env(gym.Env):
     MAP_LEN = 50
     MAP_CIRCLE_N = 5
 
-    ALREADY_SEEN_PENALTY = -0.01 # per already-visited cell in view
+    ALREADY_SEEN_PENALTY = -0.005 # per already-visited cell in view
 
     # Reward constants matched to uavSim "Learning to Recharge" structure (without charging).
-    # Edited by Andrew Chang [DATE].
+    # Edited by Andrew Chang Oct 19th, 2026.
     # uavSim equivalent names shown in comments.
     MOVEMENT_PENALTY   = -0.2    # movement_penalty:       small per-step cost to encourage efficiency
     OOB_PENALTY        = -150.0  # empty_battery_penalty:  large penalty for going out of bounds / crashing
@@ -367,10 +368,10 @@ class Env(gym.Env):
             reward += self.CELL_REWARD * newly_covered
             '''
             prev_coverage = self.map.getCoverage()
-            prev_visited = np.sum(self.map.paddedVisitMask)
+            prev_visited = np.sum(self.map.seenAreas)
             self.map.visitPos(self.dronePosX, self.dronePosY)
             new_coverage = self.map.getCoverage()
-            new_visited = np.sum(self.map.paddedVisitMask)
+            new_visited = np.sum(self.map.seenAreas)
 
             newly_visited = (new_visited - prev_visited) / 255
             newly_covered_targets = (new_coverage - prev_coverage) * self.map.img_sum
@@ -389,11 +390,12 @@ class Env(gym.Env):
 
     def render(self, render_mode='rgb_array'):
         colorImage = cv2.merge([self.map.paddedImg, self.map.paddedImg, self.map.paddedImg])
-        zeros = np.zeros_like(self.map.paddedVisit)
-        redPath = cv2.merge([np.ones_like(self.map.paddedVisit)*255, zeros, self.map.paddedVisit])
-        coverageMap = cv2.merge([self.map.paddedVisitMask, self.map.paddedVisitMask, self.map.paddedVisitMask])
-        _, mask = cv2.threshold(self.map.paddedVisit, 1, 255, cv2.THRESH_BINARY)
-        mask = mask/255
+        zeros = np.zeros_like(self.map.visitHistory)
+        cv2.imshow('self.map.visitHistory', self.map.visitHistory/255)
+        redPath = cv2.merge([np.ones_like(self.map.visitHistory)*255, zeros, self.map.visitHistory])
+        coverageMap = cv2.merge([self.map.coverageMask, self.map.coverageMask, self.map.coverageMask])
+        # _, mask = cv2.threshold(self.map.visitHistory, 1, 255, cv2.THRESH_BINARY)
+        mask = self.map.visitHistory/255
         maskColor = cv2.merge([mask, mask, mask])
         frame = colorImage
         for c in range(3):
