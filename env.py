@@ -44,7 +44,7 @@ def drawBinaryCircles(imageShape, circleN, maxRadius):
 
 # TODO: FIX VISIT MECHANISM YOU FUCKING IDIOT
 class Map:
-    def __init__(self, mapLen, circleN, visionRange = 5, seed=None):
+    def __init__(self, mapLen, globalMapLen, circleN, visionRange = 5, seed=None):
         if seed is not None:
             random.seed(seed)
 
@@ -56,6 +56,8 @@ class Map:
         self.imgBiggerSize = np.zeros_like
         self.rowN = self.img.shape[0]
         self.colN = self.img.shape[1]
+        self.globalMapRowN = globalMapLen
+        self.globalMapColN = globalMapLen
         self.visionRange = visionRange
         self.paddedRowN = self.rowN+self.visionRange*2
         self.paddedColN = self.colN+self.visionRange*2
@@ -191,7 +193,8 @@ class Map:
         endX, endY = startX+self.rowN, startY+self.colN
         globalView = np.zeros((self.rowN*2, self.colN*2), np.uint8)
         globalView[startX:endX, startY:endY] = self.img
-        return globalView
+        scaledGlobalView = cv2.resize(globalView, (self.globalMapRowN, self.globalMapColN))
+        return scaledGlobalView
     
     def getCenteredVisit(self, droneX, droneY):
         startX, startY = self.rowN-droneX, self.colN-droneY
@@ -199,7 +202,8 @@ class Map:
         globalVisit  = np.zeros((self.rowN*2, self.colN*2), np.uint8)
         # globalView[startX:endX, startY:endY] = self.img
         globalVisit[startX:endX, startY:endY] = self.coverageMask[self.visionRange:self.rowN+self.visionRange, self.visionRange:self.colN+self.visionRange]
-        return globalVisit
+        scaledGlobalVisit = cv2.resize(globalVisit, (self.globalMapRowN, self.globalMapColN))
+        return scaledGlobalVisit
 
     '''
     Modified on July 8th, 2026 by Andrew Chang.
@@ -223,10 +227,12 @@ class Actions(Enum):
     HOVER = 4
 
 class Env(gym.Env):
-    VISION_RANGE = 7 
+    VISION_RANGE = 3 
 
     MAP_LEN = 50
-    MAP_CIRCLE_N = 5
+    MAP_CIRCLE_N = 15
+
+    GLOBAL_MAP_LEN = 17
 
     ALREADY_SEEN_PENALTY = -0.005 # per already-visited cell in view
 
@@ -275,7 +281,7 @@ class Env(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.map_seed = random.randint(0, 9999999)
-        self.map = Map(mapLen = self.MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=self.map_seed)
+        self.map = Map(mapLen = self.MAP_LEN, globalMapLen = self.GLOBAL_MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=self.map_seed)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.stayStillCnt = 0
@@ -289,7 +295,7 @@ class Env(gym.Env):
     def __init__(self, render_mode="", map_seed=None):
         self.map_seed = map_seed
         self.render_mode = render_mode
-        self.map = Map(mapLen = self.MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=map_seed)
+        self.map = Map(mapLen = self.MAP_LEN, globalMapLen = self.GLOBAL_MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=map_seed)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.action_space = gym.spaces.Discrete(4)
@@ -299,8 +305,8 @@ class Env(gym.Env):
                 {
                     "local_map": gym.spaces.Box(low=0, high=1.0, shape=(self.VISION_RANGE*2+1, self.VISION_RANGE*2+1), dtype=np.float64),
                     "local_visit": gym.spaces.Box(low=0, high=1.0, shape=(self.VISION_RANGE*2+1, self.VISION_RANGE*2+1), dtype=np.float64),
-                    "global_map": gym.spaces.Box(low=0, high=1.0, shape=(self.MAP_LEN*2, self.MAP_LEN*2), dtype=np.float64),
-                    "global_visit": gym.spaces.Box(low=0, high=1.0, shape=(self.MAP_LEN*2, self.MAP_LEN*2), dtype=np.float64),
+                    "global_map": gym.spaces.Box(low=0, high=1.0, shape=(self.GLOBAL_MAP_LEN, self.GLOBAL_MAP_LEN), dtype=np.float64),
+                    "global_visit": gym.spaces.Box(low=0, high=1.0, shape=(self.GLOBAL_MAP_LEN, self.GLOBAL_MAP_LEN), dtype=np.float64),
                     "drone_pos": gym.spaces.Box(low=0, high=1, shape=(2, ), dtype=np.float64)
                     }
                 )
