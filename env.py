@@ -227,7 +227,7 @@ class Actions(Enum):
     HOVER = 4
 
 class Env(gym.Env):
-    VISION_RANGE = 3 
+    VISION_RANGE = 5 
 
     MAP_LEN = 50
     MAP_CIRCLE_N = 15
@@ -255,12 +255,14 @@ class Env(gym.Env):
         local_map, local_visit = self.map.getLocalView(self.dronePosX, self.dronePosY)
         global_map = self.map.getCenteredGlobalView(self.dronePosX, self.dronePosY)
         global_visit = self.map.getCenteredVisit(self.dronePosX, self.dronePosY)
+        time_proportion = self.remainingTime / self.TOTAL_TIMESTEP_CAP
         observation = {
                 'drone_pos': np.array([self.dronePosX/self.map.colN, self.dronePosY/self.map.rowN]),
                 'local_map': local_map/255.0,
                 'global_map': global_map/255.0,
                 'local_visit': local_visit/255.0,
                 'global_visit': global_visit/255.0,
+                'remaining_time_proportion': (time_proportion, )
                 }
         return observation
 
@@ -269,6 +271,7 @@ class Env(gym.Env):
         global_map = self.map.getCenteredGlobalView(self.dronePosX, self.dronePosY)
         global_visit = self.map.getCenteredVisit(self.dronePosX, self.dronePosY)
         imgVal = self.map.getImgValue(self.dronePosX, self.dronePosY)
+        time_proportion = self.remainingTime / self.TOTAL_TIMESTEP_CAP
         coverage = self.map.getCoverage()
 
         return {
@@ -277,7 +280,8 @@ class Env(gym.Env):
                 "global_map": global_map,
                 "local_visit": local_visit,
                 'global_visit': global_visit,
-                "current_val": imgVal,
+                'remaining_time_proportion': (time_proportion, ),
+                'current_val': imgVal,
                 "coverage": coverage
                 }
 
@@ -288,8 +292,8 @@ class Env(gym.Env):
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.stayStillCnt = 0
-        self.envTimestep = 0
         self.prevCoverage = 0
+        self.remainingTime = self.TOTAL_TIMESTEP_CAP
 
         observation = self._get_obs()
         info = self._get_info()
@@ -302,7 +306,6 @@ class Env(gym.Env):
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.action_space = gym.spaces.Discrete(4)
-        self.envTimestep = 0
         self.prevCoverage = 0
         self.observation_space = gym.spaces.Dict(
                 {
@@ -310,7 +313,8 @@ class Env(gym.Env):
                     "local_visit": gym.spaces.Box(low=0, high=1.0, shape=(self.VISION_RANGE*2+1, self.VISION_RANGE*2+1), dtype=np.float64),
                     "global_map": gym.spaces.Box(low=0, high=1.0, shape=(self.GLOBAL_MAP_LEN, self.GLOBAL_MAP_LEN), dtype=np.float64),
                     "global_visit": gym.spaces.Box(low=0, high=1.0, shape=(self.GLOBAL_MAP_LEN, self.GLOBAL_MAP_LEN), dtype=np.float64),
-                    "drone_pos": gym.spaces.Box(low=0, high=1, shape=(2, ), dtype=np.float64)
+                    "drone_pos": gym.spaces.Box(low=0, high=1, shape=(2, ), dtype=np.float64),
+                    'remaining_time_proportion': gym.spaces.Box(low=0, high=1, shape=(1, ), dtype=np.float64)
                     }
                 )
         self._action_to_direction = {
@@ -320,6 +324,7 @@ class Env(gym.Env):
                 np.int64(Actions.RIGHT.value): np.array([1, 0]),
                 }
         self.stayStillCnt = 0
+        self.remainingTime = self.TOTAL_TIMESTEP_CAP
 
     '''
     Reward function matched to uavSim "Learning to Recharge" structure (without charging).
@@ -360,7 +365,7 @@ class Env(gym.Env):
         reward = self.getReward(dronePosX, dronePosY)
 
         done = False
-        if self.envTimestep > self.TOTAL_TIMESTEP_CAP:
+        if self.remainingTime <= 0:
             done = True
         if self.map.getCoverage() > self.END_COVERAGE_THRESH:
             done = True
@@ -388,7 +393,7 @@ class Env(gym.Env):
             reward += self.EXPLORATION_REWARD * newly_visited
             reward += self.CELL_REWARD * newly_covered_targets
 
-        self.envTimestep += 1
+        self.remainingTime -= 1
 
         observation = self._get_obs()
         info = self._get_info()
