@@ -269,13 +269,16 @@ class Env(gym.Env):
         global_map = self.map.getCenteredGlobalView(self.dronePosX, self.dronePosY)
         global_visit = self.map.getCenteredVisit(self.dronePosX, self.dronePosY)
         imgVal = self.map.getImgValue(self.dronePosX, self.dronePosY)
+        coverage = self.map.getCoverage()
+
         return {
                 "drone_pos": (self.dronePosX, self.dronePosY),
                 "local_map": local_map,
                 "global_map": global_map,
                 "local_visit": local_visit,
                 'global_visit': global_visit,
-                "current_val": imgVal
+                "current_val": imgVal,
+                "coverage": coverage
                 }
 
     def reset(self, seed=None, options=None):
