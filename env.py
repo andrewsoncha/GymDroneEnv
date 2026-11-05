@@ -151,16 +151,18 @@ class Map:
         paddedY = posY + self.visionRange
         mapView = self.paddedImg[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
         visitView = self.visitHistory[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
-        return mapView, visitView 
+        coverageView = self.coverageMask[paddedX-self.visionRange : paddedX+self.visionRange+1, paddedY-self.visionRange : paddedY+self.visionRange+1]
+        return mapView, visitView, coverageView
 
     def getTargetInView(self, dronePosX, dronePosY):
         if self.isOutOfBounds(dronePosX, dronePosY):
             return 0, 0, 0, self.visionRange**2
 
-        local_map, local_visit = self.getLocalView(dronePosX, dronePosY)
+        local_map, local_visit, local_coverage = self.getLocalView(dronePosX, dronePosY)
 
+        local_width, local_height = local_coverage.shape
         # Part of the localview map that is not seen previously
-        newlySeenCoor = [(i, j) for i in range(len(local_visit)) for j in range(len(local_visit[i])) if local_visit[i][j]==0]
+        newlySeenCoor = [(i, j) for i in range(local_width) for j in range(local_height) if local_coverage[i][j]<255]
         new_cells_seen_cnt = len(newlySeenCoor)
         new_map_view = [local_map[x, y] for (x, y) in newlySeenCoor]
         new_map_uniques, new_map_counts = np.unique(new_map_view, return_counts=True)
@@ -184,7 +186,7 @@ class Map:
         if len(newlySeenCoor) == self.visionRange**2:
             old_cells_cnt = 0
         else:
-            old_cells_cnt = self.visionRange - new_cells_seen_cnt
+            old_cells_cnt = self.visionRange**2 - new_cells_seen_cnt
 
         return new_cells_seen_cnt, new_target_seen, new_nonTarget_seen, old_cells_cnt
 
@@ -234,7 +236,7 @@ class Env(gym.Env):
 
     GLOBAL_MAP_LEN = 17
 
-    ALREADY_SEEN_PENALTY = -0.005 # per already-visited cell in view
+    ALREADY_SEEN_PENALTY = -0.05 # per already-visited cell in view
 
     # Reward constants matched to uavSim "Learning to Recharge" structure (without charging).
     # Edited by Andrew Chang Oct 19th, 2026.
@@ -249,10 +251,10 @@ class Env(gym.Env):
 
     # Episode termination
     END_COVERAGE_THRESH  = 0.85
-    TOTAL_TIMESTEP_CAP   = 8 * MAP_LEN * MAP_LEN
+    TOTAL_TIMESTEP_CAP   = MAP_LEN * MAP_LEN
 
     def _get_obs(self):
-        local_map, local_visit = self.map.getLocalView(self.dronePosX, self.dronePosY)
+        local_map, local_visit, local_coverage = self.map.getLocalView(self.dronePosX, self.dronePosY)
         global_map = self.map.getCenteredGlobalView(self.dronePosX, self.dronePosY)
         global_visit = self.map.getCenteredVisit(self.dronePosX, self.dronePosY)
         time_proportion = self.remainingTime / self.TOTAL_TIMESTEP_CAP
@@ -267,7 +269,7 @@ class Env(gym.Env):
         return observation
 
     def _get_info(self):
-        local_map, local_visit = self.map.getLocalView(self.dronePosX, self.dronePosY)
+        local_map, local_visit, local_coverage = self.map.getLocalView(self.dronePosX, self.dronePosY)
         global_map = self.map.getCenteredGlobalView(self.dronePosX, self.dronePosY)
         global_visit = self.map.getCenteredVisit(self.dronePosX, self.dronePosY)
         imgVal = self.map.getImgValue(self.dronePosX, self.dronePosY)
@@ -346,6 +348,9 @@ class Env(gym.Env):
             reward += self.STAY_STILL_PENALTY * self.stayStillCnt
 
         _, _, _, old_cells_cnt = self.map.getTargetInView(dronePosX, dronePosY)
+
+        # print('old_cells_cnt: ', old_cells_cnt)
+        # print('already_seen_penalty: ', self.ALREADY_SEEN_PENALTY * old_cells_cnt)
         reward += self.ALREADY_SEEN_PENALTY * old_cells_cnt
 
         return reward
@@ -356,17 +361,23 @@ class Env(gym.Env):
         dronePosY = self.dronePosY + direction[1]
 
         # Clamp to valid range — OOB moves are ignored, no penalty
-        dronePosX = np.clip(dronePosX, 0, self.map.colN - 1)
-        dronePosY = np.clip(dronePosY, 0, self.map.rowN - 1)
+        clamped_dronePosX = np.clip(dronePosX, 0, self.map.colN - 1)
+        clamped_dronePosY = np.clip(dronePosY, 0, self.map.rowN - 1)
 
-        self.dronePosX = dronePosX
-        self.dronePosY = dronePosY
+        if self.dronePosX == clamped_dronePosX and self.dronePosY == clamped_dronePosY:
+            self.stayStillCnt+=1
+        else:
+            self.stayStillCnt=0
+
+        self.dronePosX = clamped_dronePosX
+        self.dronePosY = clamped_dronePosY
 
         reward = self.getReward(dronePosX, dronePosY)
 
         done = False
         if self.remainingTime <= 0:
-            done = True
+            # done = True
+            truncated = True
         if self.map.getCoverage() > self.END_COVERAGE_THRESH:
             done = True
         else:
