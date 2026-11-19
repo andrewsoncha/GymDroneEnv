@@ -8,6 +8,7 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import plot_results
 from stable_baselines3.common import results_plotter
+from stable_baselines3.common.vec_env import SubprocVecEnv
 
 import os
 
@@ -15,7 +16,7 @@ import matplotlib.pyplot as plt
 
 import cv2
 import numpy as np
-
+TOTAL_TIMESTEP_CAP = 50_000_000
 def make_env(rank):
     def _init():
         env = Env(mapDirPath='selected500Imgs1/', render_mode = 'rgb_array')

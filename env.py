@@ -54,10 +54,7 @@ class Map:
             self.img = drawBinaryCircles((mapLen, mapLen), circleN, mapLen//4)
         else:
             readImg = cv2.imread(mapPath, cv2.IMREAD_GRAYSCALE)
-            print('reading image path: ', mapPath)
-            print('readImg shape: ', readImg.shape)
             _, self.img = cv2.threshold(readImg, 127, 255, cv2.THRESH_BINARY)
-            print('self.img shape: ', self.img.shape)
         self.img_sum = np.count_nonzero(self.img)
         maxVal = np.max(self.img)
         self.visit = np.zeros_like(self.img)
