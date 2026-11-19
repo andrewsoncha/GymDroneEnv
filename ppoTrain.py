@@ -52,7 +52,7 @@ def make_env(rank):
         return env
     return _init
 
-TRAIN_TIMESTEPS =  5_000_0
+TRAIN_TIMESTEPS =  5_000_00
 if __name__ == '__main__':
     log_dir = 'log/'
     os.makedirs(log_dir, exist_ok=True)
@@ -70,16 +70,7 @@ if __name__ == '__main__':
     )
 
     model = PPO('MultiInputPolicy', env, verbose=1)
-    '''
-    model = RecurrentPPO('MultiInputLstmPolicy', env, 
-                         verbose=1, 
-                         batch_size=256,
-                         n_epochs=10,
-                         learning_rate=3e-4,
-                         tensorboard_log='./tensorboard/',
-                         policy_kwargs = policy_kwargs)
-    '''
-    # model.learn(total_timesteps=TRAIN_TIMESTEPS, callback=plateau_callback)
+
     model.learn(total_timesteps=TRAIN_TIMESTEPS)
     model.save('drone_search_test_train.zip')
 

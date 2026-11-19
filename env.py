@@ -5,6 +5,8 @@ import gymnasium as gym
 from random import randint
 import random
 from math import sqrt
+import os
+from os.path import isfile, join
 
 '''
 Edited by Andrew Chang July 7th, 2026.
@@ -42,14 +44,20 @@ def drawBinaryCircles(imageShape, circleN, maxRadius):
     return image 
 
 
-# TODO: FIX VISIT MECHANISM YOU FUCKING IDIOT
 class Map:
-    def __init__(self, mapLen, globalMapLen, circleN, visionRange = 5, seed=None):
+    def __init__(self, mapLen, globalMapLen, circleN, visionRange = 5, seed=None, mapPath=None, mapDirPath=None):
         if seed is not None:
             random.seed(seed)
 
         # self.img = drawProbabilityCircles((mapLen, mapLen), circleN, mapLen//4)
-        self.img = drawBinaryCircles((mapLen, mapLen), circleN, mapLen//4)
+        if mapPath is None:
+            self.img = drawBinaryCircles((mapLen, mapLen), circleN, mapLen//4)
+        else:
+            readImg = cv2.imread(mapPath, cv2.IMREAD_GRAYSCALE)
+            print('reading image path: ', mapPath)
+            print('readImg shape: ', readImg.shape)
+            _, self.img = cv2.threshold(readImg, 127, 255, cv2.THRESH_BINARY)
+            print('self.img shape: ', self.img.shape)
         self.img_sum = np.count_nonzero(self.img)
         maxVal = np.max(self.img)
         self.visit = np.zeros_like(self.img)
@@ -232,7 +240,7 @@ class Env(gym.Env):
     VISION_RANGE = 5 
 
     MAP_LEN = 50
-    MAP_CIRCLE_N = 15
+    MAP_CIRCLE_N = 5 
 
     GLOBAL_MAP_LEN = 17
 
@@ -287,10 +295,16 @@ class Env(gym.Env):
                 "coverage": coverage
                 }
 
-    def reset(self, seed=None, options=None):
+    def reset(self, mapPath=None, seed=None, options=None, mapI = -1):
         super().reset(seed=seed)
         self.map_seed = random.randint(0, 9999999)
-        self.map = Map(mapLen = self.MAP_LEN, globalMapLen = self.GLOBAL_MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=self.map_seed)
+        mapImgPath = None
+        if self.mapList is not None:
+            if mapI >= 0:
+                mapImgPath = self.mapList[mapI]
+            else:
+                mapImgPath = random.sample(self.mapList, 1)[0]
+        self.map = Map(mapLen = self.MAP_LEN, globalMapLen = self.GLOBAL_MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=self.map_seed, mapPath=mapImgPath)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.stayStillCnt = 0
@@ -301,10 +315,18 @@ class Env(gym.Env):
         info = self._get_info()
         return observation, info
 
-    def __init__(self, render_mode="", map_seed=None):
+    def __init__(self, mapPath=None, mapDirPath=None, render_mode="", map_seed=None):
         self.map_seed = map_seed
         self.render_mode = render_mode
-        self.map = Map(mapLen = self.MAP_LEN, globalMapLen = self.GLOBAL_MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=map_seed)
+        self.mapList = None
+        if mapDirPath is not None:
+            self.mapList = [join(mapDirPath, f) for f in os.listdir(mapDirPath) if isfile(join(mapDirPath, f))]
+        mapImgPath = None
+        if mapDirPath is not None:
+            mapImgPath = random.sample(self.mapList, 1)[0]
+        if mapPath is not None:
+            mapImgPath = mapPath
+        self.map = Map(mapLen = self.MAP_LEN, globalMapLen = self.GLOBAL_MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=map_seed, mapPath=mapImgPath)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
         self.action_space = gym.spaces.Discrete(4)
@@ -355,7 +377,7 @@ class Env(gym.Env):
 
         return reward
 
-    def step(self, action, permanent=True):
+    def step(self, action):
         direction = self._action_to_direction[action]
         dronePosX = self.dronePosX + direction[0]
         dronePosY = self.dronePosY + direction[1]
@@ -427,10 +449,11 @@ class Env(gym.Env):
             frame[:,:,c] = (colorImage[:,:,c]*(1-mask) + redPath[:,:,c]*mask)*0.8 + coverageMap[:,:,c]*0.2
         resizedFrame = cv2.resize(frame, (500, 500))
         resizedCoverageMap = cv2.resize(coverageMap, (500, 500))
+        cv2.imshow('colorImage', colorImage)
         cv2.imshow('resizedCoverageMap', resizedCoverageMap)
         cv2.waitKey(1)
         return resizedFrame
 
 
 if __name__ == '__main__':
-    env = Env()
+    env = Env(mapDirPath = 'selected500Imgs1')

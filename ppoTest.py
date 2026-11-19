@@ -45,7 +45,8 @@ if __name__ == '__main__':
     '''
     # model.learn(total_timesteps=TRAIN_TIMESTEPS)
     # model.load('drone_search500k.zip')
-    model = PPO.load('drone_search_test_train.zip')
+    # model = PPO.load('drone_search_test_train.zip')
+    model = PPO.load('drone_search_train_5circles.zip')
     # model.save('drone_search')
 
     # vec_env = model.get_env()
