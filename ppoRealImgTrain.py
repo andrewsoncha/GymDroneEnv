@@ -19,7 +19,7 @@ import numpy as np
 TOTAL_TIMESTEP_CAP = 500_000
 def make_env(rank):
     def _init():
-        env = Env(mapDirPath='selected500Imgs1/', render_mode = 'rgb_array')
+        env = Env(mapDirPath='selected500Imgs1/', render_mode = 'rgb_array', map_seed=rank)
         env = Monitor(env)
         return env
     return _init
