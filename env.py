@@ -55,7 +55,7 @@ class Map:
             self.img = drawBinaryCircles((mapLen, mapLen), circleN, mapLen//4)
         else:
             readImg = cv2.imread(mapPath, cv2.IMREAD_GRAYSCALE)
-            ret, self.img = cv2.threshold(readImg, 127, 255, cv2.THRESH_BINARY)
+            ret, self.img = cv2.threshold(readImg, 1, 255, cv2.THRESH_BINARY)
             # print('ret: ', ret)
             if self.img is None:
                 print('self.img is None for mapPath: ', mapPath)
@@ -320,6 +320,8 @@ class Env(gym.Env):
 
     def __init__(self, mapPath=None, mapDirPath=None, render_mode="", map_seed=None):
         self.map_seed = map_seed
+        if map_seed is not None:
+            random.seed(map_seed)
         self.render_mode = render_mode
         self.mapList = None
         if mapDirPath is not None:
