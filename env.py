@@ -50,11 +50,16 @@ class Map:
             random.seed(seed)
 
         # self.img = drawProbabilityCircles((mapLen, mapLen), circleN, mapLen//4)
+        # print('mapPath: ', mapPath)
         if mapPath is None:
             self.img = drawBinaryCircles((mapLen, mapLen), circleN, mapLen//4)
         else:
             readImg = cv2.imread(mapPath, cv2.IMREAD_GRAYSCALE)
-            _, self.img = cv2.threshold(readImg, 127, 255, cv2.THRESH_BINARY)
+            ret, self.img = cv2.threshold(readImg, 127, 255, cv2.THRESH_BINARY)
+            # print('ret: ', ret)
+            if self.img is None:
+                print('self.img is None for mapPath: ', mapPath)
+                exit(-1)
         self.img_sum = np.count_nonzero(self.img)
         maxVal = np.max(self.img)
         self.visit = np.zeros_like(self.img)
@@ -301,6 +306,7 @@ class Env(gym.Env):
                 mapImgPath = self.mapList[mapI]
             else:
                 mapImgPath = random.sample(self.mapList, 1)[0]
+        # print('reset mapImgPath: ', mapImgPath)
         self.map = Map(mapLen = self.MAP_LEN, globalMapLen = self.GLOBAL_MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=self.map_seed, mapPath=mapImgPath)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
@@ -323,6 +329,7 @@ class Env(gym.Env):
             mapImgPath = random.sample(self.mapList, 1)[0]
         if mapPath is not None:
             mapImgPath = mapPath
+        # print('env.__init__.mapImgPath: ', mapImgPath)
         self.map = Map(mapLen = self.MAP_LEN, globalMapLen = self.GLOBAL_MAP_LEN, circleN = self.MAP_CIRCLE_N, visionRange = self.VISION_RANGE, seed=map_seed, mapPath=mapImgPath)
         self.dronePosX = self.map.colN//2
         self.dronePosY = self.map.rowN//2
